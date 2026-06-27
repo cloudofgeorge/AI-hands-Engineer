@@ -1,6 +1,6 @@
-# Personal
+# Forthright
 
-User-specific writing, notes, and cookbook workflows that depend on the owner’s personal setup.
+A compact communication-mode skill for internal agent-to-agent work and operational handoffs.
 
 This README is a routing index for agents. Keep it short; detailed procedures belong in each linked `SKILL.md`.
 
@@ -8,8 +8,8 @@ This README is a routing index for agents. Keep it short; detailed procedures be
 
 - Prefer the narrowest skill that directly matches the task.
 - Load additional skills only when their workflow is needed, not just because the topic is adjacent.
-- Use these when the task explicitly touches the user’s personal notes, writing drafts, or cookbook workflow.
-- Prefer broader public skills when the task is not tied to this personal setup.
+- Use for ACP workers, subagents, reviewer/implementer coordination, and internal file compression.
+- Do not use for polished user-facing replies, safety warnings, or destructive confirmations.
 
 ## User-invoked
 
@@ -21,11 +21,9 @@ Reachable only when you type them (`disable-model-invocation: true`).
 
 Model- or user-reachable; descriptions are trigger-oriented so an agent can route to them automatically.
 
-### Personal workflows
+### Compression mode
 
-- [edit-article](./edit-article/SKILL.md) — Edit and improve articles by restructuring sections, improving clarity, and tightening prose.
-- [obsidian-vault](./obsidian-vault/SKILL.md) — Search, create, and manage notes in the Obsidian vault with wikilinks and index notes.
-- [recipe-to-cookbook](./recipe-to-cookbook/SKILL.md) — Turns YouTube cooking videos, Shorts, written recipes, or ingredient lists into a structured cookbook-style recipe in Russian.
+- [forthright](./SKILL.md) — High-compression internal communication mode for ACP workers, subagents, handoffs, and AI-only operational files.
 
 ## Maintenance
 

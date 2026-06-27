@@ -1,0 +1,32 @@
+# Skills
+
+Routing index for the skill sections in this repository.
+
+Start here when an agent needs to choose which section README to open. Each section README then routes between user-invoked and model-invoked skills.
+
+## Routing principles
+
+- Prefer the narrowest section and skill that directly matches the task.
+- Open the section README first; open individual `SKILL.md` files only after a likely match is found.
+- Treat `User-invoked` skills as explicit commands; do not auto-select them unless the user asked for that named flow.
+- Keep section READMEs short and trigger-oriented so future agents can scan them quickly.
+
+## Sections
+
+| Section | Skills | Use when |
+| --- | ---: | --- |
+| [Design](./design/README.md) | 3 | Design, visual prototyping, image generation, and critique. |
+| [Engineering](./engineering/README.md) | 39 | Planning, debugging, architecture, implementation, security, platform, CI, and deploy workflows. |
+| [Forthright](./forthright/README.md) | 1 | High-compression internal communication mode for agent-to-agent work. |
+| [gstack](./gstack/README.md) | 58 | Software-factory workflows for planning, review, browser QA, shipping, and multi-agent coordination. |
+| [Marketing](./marketing/README.md) | 45 | Growth, positioning, acquisition, conversion, lifecycle, and revenue workflows. |
+| [Personal](./personal/README.md) | 3 | User-specific writing, notes, and cookbook workflows. |
+| [Productivity](./productivity/README.md) | 5 | General workflow, handoff, teaching, grilling, and skill-writing discipline. |
+| [SEO](./seo/README.md) | 20 | SEO/GEO research, technical audits, content, authority, monitoring, and reporting. |
+| [Tools](./tools/README.md) | 4 | Concrete tool-operation workflows for documents, PDFs, Obsidian, and browser automation. |
+
+## Maintenance
+
+- Add a row here whenever a top-level skill section is added, removed, or renamed.
+- Keep the skill counts in this table aligned with real `SKILL.md` files; ignore test fixtures.
+- Update the relevant section README in the same change as any skill move or rename.

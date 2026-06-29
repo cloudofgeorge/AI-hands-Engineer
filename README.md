@@ -44,7 +44,7 @@ README:
 
 | Section | Use when | Index |
 | --- | --- | --- |
-| Design | Design critique, high-fidelity prototypes, interactive demos, slides, animations, or image generation. | [`skills/design/README.md`](skills/design/README.md) |
+| Design | Design critique, high-fidelity prototypes, interactive demos, slides, animations, image generation, brand systems, or frontend taste workflows. | [`skills/design/README.md`](skills/design/README.md) |
 | Engineering | Code planning, architecture, debugging, implementation, TDD, security, CI, deployment, macOS, or web-game work. | [`skills/engineering/README.md`](skills/engineering/README.md) |
 | Forthright | Agent-to-agent handoffs and compact internal operational writing. | [`skills/forthright/README.md`](skills/forthright/README.md) |
 | gstack | Software-factory workflows: plan, review, browser QA, ship, deploy, canary, benchmark, or coordinate agents. | [`skills/gstack/README.md`](skills/gstack/README.md) |

@@ -15,7 +15,6 @@ Start here when an agent needs to choose which section README to open. Each sect
 
 | Section | Skills | Use when |
 | --- | ---: | --- |
-| [Brainstorming](./brainstorming/README.md) | 1 | Idea shaping, requirement discovery, approach comparison, and design approval before creative implementation work. |
 | [Design](./design/README.md) | 16 | Design, visual prototyping, image generation, brand systems, frontend taste, and UI critique. |
 | [Engineering](./engineering/README.md) | 39 | Planning, debugging, architecture, implementation, security, platform, CI, and deploy workflows. |
 | [Forthright](./forthright/README.md) | 1 | High-compression internal communication mode for agent-to-agent work. |

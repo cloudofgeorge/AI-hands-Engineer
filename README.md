@@ -22,6 +22,7 @@ root repository.
 │   └── web/
 └── skills/
     ├── README.md
+    ├── brainstorming/
     ├── design/
     ├── engineering/
     ├── forthright/
@@ -44,6 +45,7 @@ README:
 
 | Section | Use when | Index |
 | --- | --- | --- |
+| Brainstorming | Collaborative idea shaping, requirement discovery, approach comparison, and design approval before creative implementation work. | [`skills/brainstorming/README.md`](skills/brainstorming/README.md) |
 | Design | Design critique, high-fidelity prototypes, interactive demos, slides, animations, image generation, brand systems, or frontend taste workflows. | [`skills/design/README.md`](skills/design/README.md) |
 | Engineering | Code planning, architecture, debugging, implementation, TDD, security, CI, deployment, macOS, or web-game work. | [`skills/engineering/README.md`](skills/engineering/README.md) |
 | Forthright | Agent-to-agent handoffs and compact internal operational writing. | [`skills/forthright/README.md`](skills/forthright/README.md) |

@@ -2,13 +2,14 @@
 
 Routing index for the skill sections in this repository.
 
-Start here when an agent needs to choose which section README to open. Each section README then routes between user-invoked and model-invoked skills.
+Start here when an agent needs to choose which section README to open. Each section README then routes between user-invoked, model-invoked, and imported nested skill bundles.
 
 ## Routing principles
 
 - Prefer the narrowest section and skill that directly matches the task.
 - Open the section README first; open individual `SKILL.md` files only after a likely match is found.
 - Treat `User-invoked` skills as explicit commands; do not auto-select them unless the user asked for that named flow.
+- Imported bundles can be nested deeper than `skills/<section>/<skill-name>`; open their bundle README when the section points to one.
 - Keep section READMEs short and trigger-oriented so future agents can scan them quickly.
 
 ## Sections
@@ -16,7 +17,7 @@ Start here when an agent needs to choose which section README to open. Each sect
 | Section | Skills | Use when |
 | --- | ---: | --- |
 | [Design](./design/README.md) | 16 | Design, visual prototyping, image generation, brand systems, frontend taste, and UI critique. |
-| [Engineering](./engineering/README.md) | 39 | Brainstorming, planning, debugging, architecture, implementation, security, platform, CI, and deploy workflows. |
+| [Engineering](./engineering/README.md) | 60 | Brainstorming, planning, debugging, architecture, implementation, security, platform, CI, deploy, web/mobile performance, and UltraSkills research/review/harness workflows. |
 | [Forthright](./forthright/README.md) | 1 | High-compression internal communication mode for agent-to-agent work. |
 | [gstack](./gstack/README.md) | 58 | Software-factory workflows for planning, review, browser QA, shipping, and multi-agent coordination. |
 | [Marketing](./marketing/README.md) | 45 | Growth, positioning, acquisition, conversion, lifecycle, and revenue workflows. |

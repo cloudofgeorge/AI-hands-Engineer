@@ -35,7 +35,9 @@ root repository.
 
 ## Skills
 
-Skills live under `skills/<section>/<skill-name>/SKILL.md`. A skill can also
+Most skills live under `skills/<section>/<skill-name>/SKILL.md`. Imported
+bundles can nest deeper; for example, the UltraSkills bundle lives under
+`skills/engineering/UltraSkills/skills/<skill-name>/SKILL.md`. A skill can also
 include nearby reference documents, templates, assets, or scripts when the
 workflow needs more than one file.
 
@@ -45,7 +47,7 @@ README:
 | Section | Use when | Index |
 | --- | --- | --- |
 | Design | Design critique, high-fidelity prototypes, interactive demos, slides, animations, image generation, brand systems, or frontend taste workflows. | [`skills/design/README.md`](skills/design/README.md) |
-| Engineering | Brainstorming, code planning, architecture, debugging, implementation, TDD, security, CI, deployment, macOS, or web-game work. | [`skills/engineering/README.md`](skills/engineering/README.md) |
+| Engineering | Brainstorming, code planning, architecture, debugging, implementation, TDD, security, CI, deployment, macOS, web, or UltraSkills staged research/review/harness workflows. | [`skills/engineering/README.md`](skills/engineering/README.md) |
 | Forthright | Agent-to-agent handoffs and compact internal operational writing. | [`skills/forthright/README.md`](skills/forthright/README.md) |
 | gstack | Software-factory workflows: plan, review, browser QA, ship, deploy, canary, benchmark, or coordinate agents. | [`skills/gstack/README.md`](skills/gstack/README.md) |
 | Marketing | Growth, positioning, acquisition, conversion, lifecycle, revenue, and launch work. | [`skills/marketing/README.md`](skills/marketing/README.md) |
@@ -62,6 +64,17 @@ Each section README separates:
   (`disable-model-invocation: true`).
 - **Model-invoked** skills — model- or user-reachable, with trigger-oriented
   descriptions so agents can select them automatically.
+- **Imported bundles** — nested skill collections such as UltraSkills; use the
+  bundle README plus the section README when a skill name overlaps with another
+  installed skill.
+
+### Hermes installation note
+
+For Hermes Agent, install or point `skills.external_dirs` at this repository's
+`skills/` directory. Hermes users should reload/start a new session after the
+repo update so nested `SKILL.md` files, including UltraSkills, are discoverable.
+If a nested skill has the same `name` as another installed skill, use the linked
+README path to choose the intended version.
 
 ## Rules
 

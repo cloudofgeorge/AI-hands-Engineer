@@ -1,0 +1,148 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/MrFlashAccount/Skills/schemas/workflow/research-critic/research-draft-output",
+  "title": "Research Critic Research Draft Output",
+  "description": "Neutral reusable output contract for a Researcher A draft before critic attack.",
+  "type": "object",
+  "required": [
+    "outcome"
+  ],
+  "properties": {
+    "outcome": {
+      "enum": [
+        "ready_for_attack",
+        "needs_input",
+        "blocked"
+      ],
+      "description": "Authoritative routing state for the research draft."
+    },
+    "questions": {
+      "type": "array",
+      "description": "Blocking user questions when outcome is needs_input.",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "minItems": 1
+    },
+    "artifacts": {
+      "type": "array",
+      "items": {
+        "$ref": "https://github.com/MrFlashAccount/Skills/schemas/workflow/baton#/$defs/artifact"
+      },
+      "minItems": 1,
+      "maxItems": 1,
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "reasons-canvas-research"
+          }
+        }
+      },
+      "description": "Producer must emit artifact metadata for the required immutable reasons-canvas-research artifact.",
+      "x-usage": "Use artifact files as the human-facing source of truth; structured JSON remains for workflow branching. The reasons-canvas-research artifact is required for ready_for_attack."
+    },
+    "results": {
+      "type": "array",
+      "items": {
+        "$ref": "https://github.com/MrFlashAccount/Skills/schemas/workflow/baton#/$defs/result"
+      }
+    },
+    "blocker": {
+      "$ref": "#/$defs/blocker"
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "blocker": {
+      "type": "object",
+      "required": [
+        "summary",
+        "source_step_id",
+        "needed"
+      ],
+      "properties": {
+        "summary": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source_step_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "needed": {
+          "type": "string",
+          "minLength": 1
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "risk": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "outcome": {
+            "const": "ready_for_attack"
+          }
+        },
+        "required": [
+          "outcome"
+        ]
+      },
+      "then": {
+        "required": [
+          "artifacts"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "outcome": {
+            "const": "needs_input"
+          }
+        },
+        "required": [
+          "outcome"
+        ]
+      },
+      "then": {
+        "required": [
+          "questions"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "outcome": {
+            "const": "blocked"
+          }
+        },
+        "required": [
+          "outcome"
+        ]
+      },
+      "then": {
+        "required": [
+          "blocker"
+        ]
+      }
+    }
+  ]
+}

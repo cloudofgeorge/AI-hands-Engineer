@@ -1,0 +1,116 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Workflow Authoring Analyzer Findings Output",
+  "type": "object",
+  "required": [
+    "outcome"
+  ],
+  "properties": {
+    "outcome": {
+      "enum": [
+        "ready_for_review",
+        "no_changes",
+        "blocked"
+      ],
+      "description": "Analyzer recommendation state. Findings cannot authorize edits directly."
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "evidence_path",
+          "affected_contract_surface",
+          "severity",
+          "next_action",
+          "edit_authorized"
+        ],
+        "properties": {
+          "evidence_path": {
+            "type": "string",
+            "minLength": 1
+          },
+          "affected_contract_surface": {
+            "type": "string",
+            "minLength": 1
+          },
+          "severity": {
+            "enum": [
+              "critical",
+              "high",
+              "medium",
+              "low",
+              "info"
+            ]
+          },
+          "next_action": {
+            "type": "string",
+            "minLength": 1
+          },
+          "edit_authorized": {
+            "const": false,
+            "description": "Analyzer findings are evidence-backed recommendations only; edits require approve_reviewed_improvement."
+          }
+        },
+        "additionalProperties": true
+      }
+    },
+    "blocker": {
+      "type": "object",
+      "required": [
+        "summary"
+      ],
+      "properties": {
+        "summary": {
+          "type": "string",
+          "minLength": 1
+        },
+        "needed": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true,
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "outcome": {
+            "enum": [
+              "ready_for_review",
+              "no_changes"
+            ]
+          }
+        },
+        "required": [
+          "outcome"
+        ]
+      },
+      "then": {
+        "required": [
+          "findings"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "outcome": {
+            "const": "blocked"
+          }
+        },
+        "required": [
+          "outcome"
+        ]
+      },
+      "then": {
+        "required": [
+          "blocker"
+        ]
+      }
+    }
+  ]
+}

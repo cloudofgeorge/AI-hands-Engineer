@@ -1,0 +1,12 @@
+{
+  "name": "schema-validation",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./schema-validation.mjs"
+  },
+  "files": [
+    "schema-validation.mjs",
+    "vendor"
+  ]
+}

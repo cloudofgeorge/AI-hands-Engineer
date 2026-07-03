@@ -1,0 +1,126 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Workflow Authoring Implementation Output",
+  "type": "object",
+  "required": [
+    "outcome"
+  ],
+  "properties": {
+    "outcome": {
+      "enum": [
+        "implemented",
+        "blocked"
+      ]
+    },
+    "changed_files": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "validation": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "command",
+          "result"
+        ],
+        "properties": {
+          "command": {
+            "type": "string",
+            "minLength": 1
+          },
+          "result": {
+            "type": "string",
+            "minLength": 1
+          },
+          "isolated_workflow_runs_root": {
+            "type": "string",
+            "minLength": 1
+          },
+          "source_tree_artifact_leak_check": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "additionalProperties": true
+      }
+    },
+    "validation_evidence": {
+      "type": "object",
+      "required": [
+        "workflow_validate",
+        "smoke_or_fixture_check",
+        "isolated_workflow_runs_root",
+        "cleanup",
+        "source_tree_artifact_leak_check"
+      ],
+      "properties": {
+        "workflow_validate": {
+          "type": "string",
+          "minLength": 1
+        },
+        "smoke_or_fixture_check": {
+          "type": "string",
+          "minLength": 1
+        },
+        "isolated_workflow_runs_root": {
+          "type": "string",
+          "minLength": 1
+        },
+        "cleanup": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source_tree_artifact_leak_check": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": true
+    },
+    "blocker": {
+      "type": "object"
+    }
+  },
+  "additionalProperties": true,
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "outcome": {
+            "const": "implemented"
+          }
+        },
+        "required": [
+          "outcome"
+        ]
+      },
+      "then": {
+        "required": [
+          "changed_files",
+          "validation",
+          "validation_evidence"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "outcome": {
+            "const": "blocked"
+          }
+        },
+        "required": [
+          "outcome"
+        ]
+      },
+      "then": {
+        "required": [
+          "blocker"
+        ]
+      }
+    }
+  ]
+}

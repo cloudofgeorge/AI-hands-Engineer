@@ -1,0 +1,316 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/MrFlashAccount/Skills/schemas/workflow/workflow",
+  "title": "Workflow Document",
+  "description": "Workflow documents use the flat workflow root: name, version, start, done, blocked, and steps are defined at the JSON root.",
+  "$ref": "#/$defs/workflow",
+  "$defs": {
+    "step": {
+      "description": "Canonical target workflow step shape.",
+      "oneOf": [
+        {
+          "$ref": "#/$defs/workerStep"
+        },
+        {
+          "$ref": "#/$defs/approvalStep"
+        },
+        {
+          "$ref": "#/$defs/blockedStep"
+        },
+        {
+          "$ref": "#/$defs/doneStep"
+        }
+      ]
+    },
+    "workerStep": {
+      "type": "object",
+      "required": [
+        "name",
+        "kind",
+        "output",
+        "next"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "const": "worker"
+        },
+        "agent": {
+          "description": "Optional stable logical agent name. Worker steps with the same agent share the same advisory host worker binding instead of using the workflow step id as the binding key.",
+          "type": "string",
+          "minLength": 1
+        },
+        "input": {
+          "$ref": "#/$defs/workerInput"
+        },
+        "output": {
+          "$ref": "#/$defs/output"
+        },
+        "next": {
+          "$ref": "#/$defs/next"
+        }
+      },
+      "additionalProperties": false
+    },
+    "approvalStep": {
+      "type": "object",
+      "required": [
+        "name",
+        "kind",
+        "next"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "const": "approval"
+        },
+        "input": {
+          "$ref": "#/$defs/input"
+        },
+        "output": {
+          "$ref": "#/$defs/approvalOutput"
+        },
+        "next": {
+          "$ref": "#/$defs/next"
+        }
+      },
+      "additionalProperties": false
+    },
+    "doneStep": {
+      "type": "object",
+      "required": [
+        "name",
+        "kind"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "const": "done"
+        },
+        "input": {
+          "$ref": "#/$defs/input"
+        }
+      },
+      "additionalProperties": false
+    },
+    "blockedStep": {
+      "type": "object",
+      "required": [
+        "name",
+        "kind"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "const": "blocked"
+        },
+        "input": {
+          "$ref": "#/$defs/input"
+        }
+      },
+      "additionalProperties": false
+    },
+    "input": {
+      "type": "object",
+      "properties": {
+        "template": {
+          "type": "string",
+          "minLength": 1
+        },
+        "prompt": {
+          "$ref": "#/$defs/prompt"
+        }
+      },
+      "additionalProperties": false
+    },
+    "workerInput": {
+      "type": "object",
+      "properties": {
+        "template": {
+          "type": "string",
+          "minLength": 1
+        },
+        "prompt": {
+          "$ref": "#/$defs/prompt"
+        },
+        "role": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "prompt": {
+      "description": "Workflow prompt text. Use a string for compact prompts or an array of strings for readable multi-line authoring; array items are joined with newline characters before rendering.",
+      "oneOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "next": {
+      "description": "Next step target, top-level parallel transition items, a path-only dynamic next expression, or match/cases routing from a path-only expression to static targets. Top-level next arrays may contain static step ids, path-only expressions, or match/cases objects and are flattened one level after resolution. JSON schema may allow shapes that semantic validation rejects; parallel fanout branches must converge directly into one explicit non-terminal join step and cannot use dynamic or conditional branch next before that join.",
+      "oneOf": [
+        {
+          "type": "string",
+          "minLength": 1
+        },
+        {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "oneOf": [
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "$ref": "#/$defs/matchCasesNext"
+              }
+            ]
+          }
+        },
+        {
+          "$ref": "#/$defs/matchCasesNext"
+        }
+      ]
+    },
+    "output": {
+      "type": "object",
+      "required": [
+        "template"
+      ],
+      "properties": {
+        "template": {
+          "type": "string",
+          "minLength": 1
+        },
+        "schema": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "approvalOutput": {
+      "type": "object",
+      "required": [
+        "schema"
+      ],
+      "properties": {
+        "schema": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "nextCaseTarget": {
+      "description": "Case target: one step id string or a non-empty unique flat array of step ids. Nested match/cases objects are not supported in cases.",
+      "oneOf": [
+        {
+          "type": "string",
+          "minLength": 1
+        },
+        {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      ]
+    },
+    "matchCasesNext": {
+      "type": "object",
+      "required": [
+        "match",
+        "cases"
+      ],
+      "properties": {
+        "match": {
+          "type": "string",
+          "minLength": 1
+        },
+        "cases": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {
+            "$ref": "#/$defs/nextCaseTarget"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "workflow": {
+      "type": "object",
+      "required": [
+        "name",
+        "version",
+        "start",
+        "done",
+        "blocked",
+        "steps"
+      ],
+      "not": {
+        "required": [
+          "workflow"
+        ]
+      },
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1
+        },
+        "start": {
+          "type": "string",
+          "minLength": 1
+        },
+        "done": {
+          "type": "string",
+          "minLength": 1
+        },
+        "blocked": {
+          "type": "string",
+          "minLength": 1
+        },
+        "steps": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {
+            "$ref": "#/$defs/step"
+          }
+        }
+      },
+      "additionalProperties": true
+    }
+  }
+}

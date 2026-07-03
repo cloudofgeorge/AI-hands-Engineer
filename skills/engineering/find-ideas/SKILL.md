@@ -1,21 +1,20 @@
 ---
 name: find-ideas
-description: Use when the user wants to find what to work on next in an existing project, audit progress, brainstorm a backlog, surface bugs and tech debt, or generate a prioritized list of ideas. Triggers on "/find-ideas", "what should I build next", "find me ideas", "audit what's left", "find bugs", "what's missing".
+description: Use when the user wants to find new feature ideas for an existing project, audit shipped features, brainstorm a feature backlog, or generate a prioritized list of product ideas. Triggers on "/find-ideas", "what should I build next", "find me feature ideas", "what feature should I build next", "what's missing".
 ---
 
 # Find Ideas
 
 ## Overview
 
-Survey an existing project, then produce a prioritized backlog as a markdown doc in the repo. Three sections of ideas (features, bugs, tech debt) plus an inventory of what's already done.
+Survey an existing project, then produce a prioritized feature-ideas doc in the repo: an inventory of what's already done, followed by new feature ideas.
 
 The completed-features inventory comes first because it grounds every later judgment — you can't tell what's missing without seeing what's there.
 
 ## When to Use
 
-- User asks for ideas, a backlog, a roadmap, or "what to work on next"
-- User wants to audit a project's state
-- User mentions surfacing bugs or tech debt
+- User asks for feature ideas, a feature backlog, a feature roadmap, or "what feature to build next"
+- User wants to audit shipped features to spot product gaps
 - Slash command `/find-ideas` invoked
 
 **Don't use for:**
@@ -39,16 +38,14 @@ If the project is a monorepo, do this per app/package that looks relevant.
 
 ### 2. Synthesize
 
-Build the four lists in order:
+Build the two lists in order:
 
 1. **Completed features** — what's shipped. Group by area (auth, billing, UI, etc.). One bullet per feature.
 2. **New feature ideas** — gaps, natural extensions, things the docs hint at but haven't been built
-3. **Bugs / known issues** — edge cases, missing validation, broken flows you noticed while reading
-4. **Tech debt / refactors** — duplication, missing tests, fragile patterns, stale dependencies
 
-Assign every item in lists 2–4 a priority:
+Assign every new feature idea a priority:
 
-- **P0** — critical, blocking, data-loss risk, security
+- **P0** — missing core workflow blocking the product promise
 - **P1** — important, ship next
 - **P2** — nice-to-have
 - **P3** — someday / speculative
@@ -66,7 +63,7 @@ Use this structure exactly:
 
 ## Priority Legend
 
-- **P0** — critical / blocking / data-loss / security
+- **P0** — missing core workflow blocking the product promise
 - **P1** — important, ship next
 - **P2** — nice-to-have
 - **P3** — someday / speculative
@@ -80,36 +77,25 @@ Use this structure exactly:
 
 - **[P1] Title** — what it is. _Why: rationale._
 - **[P2] Title** — what it is. _Why: rationale._
-
-## Bugs / Known Issues
-
-- **[P0] Title** — symptom and where. _Why: impact._
-
-## Tech Debt / Refactors
-
-- **[P2] Title** — what's wrong. _Why: cost of leaving it._
 ```
 
-Sort each priority section by priority (P0 → P3), then alphabetically inside a tier.
+Sort new feature ideas by priority (P0 → P3), then alphabetically inside a tier.
 
 ### 4. Wrap up
 
-Print the doc path and a 3-bullet summary (top P0/P1 item from each list, if any). Then ask:
+Print the doc path and a 3-bullet summary of the strongest P0/P1 feature ideas, if any. Then ask:
 
 > "Want me to refine any section, add detail, or convert top items into GitHub issues?"
 
 ### 5. Offer to split into task files
 
-After delivering the ideas doc, ask the user if they want the lists split into actionable task files under `docs/tasks/` (create the folder if missing):
+After delivering the ideas doc, ask the user if they want the new feature ideas split into an actionable task file under `docs/tasks/` (create the folder if missing):
 
-> "Want me to split these into task files under `docs/tasks/`? I'd create `new_features_ideas.md`, `bugs.md`, `tech_debt.md` (and any other sections that exist) as numbered checklists."
+> "Want me to split these into a task file under `docs/tasks/`? I'd create `new_features_ideas.md` as a numbered checklist."
 
-If the user agrees, write one file per non-empty idea section. Map sections to filenames:
+If the user agrees, write:
 
 - **New Feature Ideas** → `new_features_ideas.md`
-- **Bugs / Known Issues** → `bugs.md`
-- **Tech Debt / Refactors** → `tech_debt.md`
-- Any other section → `<snake_case_of_section_title>.md`
 
 Do **not** create a task file for "Completed Features" — that's reference, not actionable.
 
@@ -123,10 +109,10 @@ Do **not** create a task file for "Completed Features" — that's reference, not
 Example:
 
 ```markdown
-# Bugs / Known Issues
+# New Feature Ideas
 
-1. - [ ] **[P0] Title** — symptom and where. _Why: impact._
-2. - [ ] **[P1] Title** — symptom and where. _Why: impact._
+1. - [ ] **[P1] Title** — what it is. _Why: rationale._
+2. - [ ] **[P2] Title** — what it is. _Why: rationale._
 ```
 
 After writing the files, print the list of paths created.
@@ -136,17 +122,17 @@ After writing the files, print the list of paths created.
 | Step | Output |
 |------|--------|
 | Research | Mental model of project state |
-| Synthesize | 4 lists (completed + 3 prioritized) |
+| Synthesize | Completed features + prioritized new feature ideas |
 | Write | `docs/ideas/YYYY-MM-DD-ideas.md` |
 | Wrap | Path + 3-bullet summary + offer to refine |
-| Split (on request) | `docs/tasks/{new_features_ideas,bugs,tech_debt,…}.md` as numbered checklists |
+| Split (on request) | `docs/tasks/new_features_ideas.md` as a numbered checklist |
 
 ## Common Mistakes
 
 - **Skipping the completed-features inventory** — without it, "new ideas" overlap with what's already shipped. Always do it first.
-- **Listing every possible TODO** — the value is prioritization. If everything is P1, nothing is. Aim for ~5-15 items per list, not 50.
-- **Vague priorities** — "P1: improve performance" is useless. Say what specifically is slow and why it matters.
-- **Inventing bugs you can't ground in code** — only list bugs you can point to a file/area for. Speculation belongs in "New feature ideas" or "Tech debt".
+- **Listing every possible idea** — the value is prioritization. If everything is P1, nothing is. Aim for ~5-15 feature ideas, not 50.
+- **Vague priorities** — "P1: add analytics" is useless. Say which workflow it improves and why it matters.
+- **Inventing ideas without a product gap** — only list ideas grounded in shipped behavior, docs, or clear user workflows.
 - **Exhaustively reading the codebase** — research until you have enough signal, then synthesize. The doc is the deliverable, not a complete audit.
 
 ## Converting to Issues

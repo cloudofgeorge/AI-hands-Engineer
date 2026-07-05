@@ -3,12 +3,12 @@ import { spawnSync } from 'node:child_process';
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import test, { after } from 'node:test';
+import { afterAll, test } from 'bun:test';
 import { fileURLToPath } from 'node:url';
-import { renderStepPrompts } from '../use-cases/runtime/parallel/render.mjs';
+import { renderStepPrompts } from '../runtime/parallel/render.mjs';
 import { selectState } from '../runtime/state-selection.mjs';
 import { renderWorkflowPrompt } from '../entities/Template/index.mjs';
-import { validateAgainstOutputSchema } from '../use-cases/runtime/output/output-schema-validation.mjs';
+import { validateAgainstOutputSchema } from '../runtime/output/output-schema-validation.mjs';
 import { loadWorkflowResources } from '../persistence/workflow-resources/runtime-reader.mjs';
 import { loadOutputSchema } from '../persistence/workflow-resources/output-schema-loader.mjs';
 
@@ -79,20 +79,19 @@ const schemaWorkflowDoc = {
     version: 1,
     start: 'worker_step',
     done: 'done',
-    blocked: 'blocked',
     steps: {
       worker_step: {
         name: 'Worker step',
         kind: 'worker',
         input: { template: 'worker.md', role: 'backend', prompt: 'Run worker.' },
         output: outputContract(),
-        next: { match: '${{ output.outcome }}', cases: { ready: 'approval_step', retry: 'worker_step', blocked: 'blocked' } },
+        next: { match: '${{ output.outcome }}', cases: { ready: 'approval_step', retry: 'worker_step' } },
       },
       approval_step: {
         name: 'Approval step',
         kind: 'approval',
         input: { prompt: 'Approve.' },
-        next: { match: '${{ output.approval }}', cases: { approved: 'direct_next_worker', rejected: 'worker_step', blocked: 'blocked' } },
+        next: { match: '${{ output.approval }}', cases: { approved: 'direct_next_worker', rejected: 'worker_step' } },
       },
       direct_next_worker: {
         name: 'Direct next worker',
@@ -102,7 +101,6 @@ const schemaWorkflowDoc = {
         next: 'done',
       },
       done: { name: 'Done', kind: 'done', input: { prompt: 'Finished.' } },
-      blocked: { name: 'Blocked', kind: 'blocked', input: { prompt: 'Blocked.' } },
     },
 
 };
@@ -135,7 +133,7 @@ function baton(overrides = {}) {
   };
 }
 
-function runNode(args, cwd = root) {
+function runBun(args, cwd = root) {
   return spawnSync(process.execPath, args, { cwd, encoding: 'utf8' });
 }
 
@@ -183,7 +181,7 @@ function expectCliResult(label, result, expectSuccess) {
   return response;
 }
 
-after(() => {
+afterAll(() => {
   rmSync(tempDir, { recursive: true, force: true });
 });
 
@@ -315,7 +313,7 @@ test('prompt renderer: interpolates prompt input expressions in workflow step pr
     '## Workflow step prompt',
     'Previous summary: drafted',
     'Critic findings:',
-    '```json\n[\n  "tighten scope"\n]',
+    '```json\n["tighten scope"]',
   ]);
 });
 
@@ -353,8 +351,48 @@ test('prompt renderer: joins prompt arrays before interpolation', () => {
     '## Workflow step prompt',
     'Previous summary: drafted',
     'Critic findings:',
-    '```json\n[\n  "tighten scope"\n]',
+    '```json\n["tighten scope"]',
   ]);
+});
+
+test('prompt renderer: interpolated object JSON is compact and not size bounded', () => {
+  const step = {
+    name: 'Worker step',
+    kind: 'worker',
+    input: { prompt: 'Payload:\n${{ input.source.payload }}' },
+    output: { template: 'output.md' },
+    next: 'done',
+  };
+
+  const compact = renderFixture({
+    label: 'render-compact-json-interpolation',
+    stepId: 'worker_step',
+    step,
+    batonDoc: baton({
+      state: {
+        artifacts: [],
+        results: [],
+        source: { payload: { alpha: ['one', 'two'], nested: { ok: true } } },
+      },
+    }),
+  });
+
+  assert.match(compact.prompt, /```json\n\{"alpha":\["one","two"\],"nested":\{"ok":true\}\}\n```/);
+
+  const large = renderFixture({
+    label: 'render-large-json-interpolation',
+    stepId: 'worker_step',
+    step,
+    batonDoc: baton({
+      state: {
+        artifacts: [],
+        results: [],
+        source: { payload: { text: 'x'.repeat(13000) } },
+      },
+    }),
+  });
+
+  assert.match(large.prompt, /```json\n\{"text":"x{13000}"\}\n```/);
 });
 
 test('prompt renderer: uses prompt interpolation default for missing prompt input paths', () => {
@@ -957,7 +995,6 @@ test('workflow resource refs resolve from the workflow package directory after p
     version: 1,
     start: 'worker_step',
     done: 'done',
-    blocked: 'blocked',
     steps: {
       worker_step: {
         name: 'Worker step',
@@ -967,7 +1004,6 @@ test('workflow resource refs resolve from the workflow package directory after p
         next: 'done',
       },
       done: { name: 'Done', kind: 'done' },
-      blocked: { name: 'Blocked', kind: 'blocked' },
     },
   };
   const workflowPath = path.join(workflowDir, 'workflow.json');
@@ -1082,7 +1118,6 @@ test('prompt renderer: shared template refs are explicit and reusable across wor
     version: 1,
     start: 'worker_step',
     done: 'done',
-    blocked: 'blocked',
     steps: {
       worker_step: {
         name: 'Worker step',
@@ -1092,7 +1127,6 @@ test('prompt renderer: shared template refs are explicit and reusable across wor
         next: 'done',
       },
       done: { name: 'Done', kind: 'done' },
-      blocked: { name: 'Blocked', kind: 'blocked' },
     },
   };
 
@@ -1139,11 +1173,9 @@ test('prompt renderer: workflow resource refs cannot escape repository root', ()
     version: 1,
     start: 'worker_step',
     done: 'done',
-    blocked: 'blocked',
     steps: {
       worker_step: { name: 'Worker step', kind: 'worker', input: { prompt: 'Run.' }, next: 'done' },
       done: { name: 'Done', kind: 'done' },
-      blocked: { name: 'Blocked', kind: 'blocked' },
     },
   };
 
@@ -1316,7 +1348,7 @@ test('prompt renderer: validation feedback appends to prompt arrays', () => {
   const batonPath = writeJson('prompt-array-feedback-baton.json', baton());
   const outputPath = writeJson('prompt-array-feedback-output.json', { outcome: 'invalid' });
 
-  const result = runNode(['skills/orbita/lib/tests/helpers/workflow-runtime-harness.mjs', 'apply', workflowPath, batonPath, outputPath]);
+  const result = runBun(['skills/orbita/lib/tests/helpers/workflow-runtime-harness.mjs', 'apply', workflowPath, batonPath, outputPath]);
   const response = expectCliResult('prompt-array-feedback', result, true);
 
   assert.equal(response.steps[0].step.input.prompt.includes('Run worker.\n\nUse strict output.'), true);
@@ -1329,7 +1361,7 @@ test('CLI render: prompt input expressions cannot read aggregate runtime state',
   const workflowPath = writeJson('runtime-reserved-render-workflow.json', workflowDoc);
   const batonPath = writeJson('runtime-reserved-render-baton.json', baton({ cursor: 'approval_step', status: 'running', state: { artifacts: [{ producerStepId: 'worker_step', artifact: { id: 'packet', content_type: 'text/markdown', path: '/runs/worker_step/artifacts/packet.md', summary: 'leaked' } }], results: [] } }));
 
-  const result = runNode(['skills/orbita/lib/tests/helpers/workflow-runtime-harness.mjs', 'render', workflowPath, batonPath]);
+  const result = runBun(['skills/orbita/lib/tests/helpers/workflow-runtime-harness.mjs', 'render', workflowPath, batonPath]);
   const response = expectCliResult('runtime-reserved-render', result, false);
 
   assert.match(response.stderr, /input step 'artifacts' is not a declared workflow step/);
@@ -1346,7 +1378,7 @@ test('CLI render: fixture returns compiledPrompt and does not mutate baton', () 
   const batonPath = writeJson('fixture-render-baton.json', baton({ state: { artifacts: [], results: [], worker_step: { outcome: 'ready', summary: 'ready' } } }));
   const before = readFileSync(batonPath, 'utf8');
 
-  const result = runNode(['skills/orbita/lib/tests/helpers/workflow-runtime-harness.mjs', 'render', workflowPath, batonPath]);
+  const result = runBun(['skills/orbita/lib/tests/helpers/workflow-runtime-harness.mjs', 'render', workflowPath, batonPath]);
   const response = expectCliResult('fixture-render', result, true);
 
   assert.equal(readFileSync(batonPath, 'utf8'), before, 'render mutated baton file');
@@ -1377,14 +1409,14 @@ test('CLI render: diagnostics are included only when explicitly requested', () =
 
   const defaultResponse = expectCliResult(
     'render-diagnostics-default',
-    runNode(['skills/orbita/lib/tests/helpers/workflow-runtime-harness.mjs', 'render', workflowPath, batonPath]),
+    runBun(['skills/orbita/lib/tests/helpers/workflow-runtime-harness.mjs', 'render', workflowPath, batonPath]),
     true,
   );
   assert.equal(Object.hasOwn(defaultResponse.steps[0].compiledPrompt, 'diagnostics'), false);
 
   const diagnosticsResponse = expectCliResult(
     'render-diagnostics-opt-in',
-    runNode(['skills/orbita/lib/tests/helpers/workflow-runtime-harness.mjs', 'render', '--diagnostics', workflowPath, batonPath]),
+    runBun(['skills/orbita/lib/tests/helpers/workflow-runtime-harness.mjs', 'render', '--diagnostics', workflowPath, batonPath]),
     true,
   );
   assert.deepEqual(diagnosticsResponse.steps[0].compiledPrompt.diagnostics.map((diagnostic) => diagnostic.code), ['default_prompt_used']);

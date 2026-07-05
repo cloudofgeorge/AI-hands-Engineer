@@ -3,12 +3,13 @@
   "description": "Producer output contract for dispatching selected DevHarness review branches.",
   "type": "object",
   "required": [
-    "outcome"
+    "outcome",
+    "verdict"
   ],
   "properties": {
     "outcome": {
       "const": "ready_for_review",
-      "description": "Producer must emit the single enum value that reflects the completed stage state; use blocked only when blocker explains the stop condition.",
+      "description": "Producer must emit the single enum value that reflects the completed stage state; use blocked only when blocker explains the recoverable pause.",
       "x-usage": "Treat this as the authoritative workflow state for this output. Do not infer success from other populated fields when this says blocked or needs revision."
     },
     "verdict": {
@@ -70,24 +71,5 @@
   },
   "additionalProperties": false,
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/MrFlashAccount/Skills/schemas/workflow/dev-harness/review-dispatch-output",
-  "allOf": [
-    {
-      "if": {
-        "properties": {
-          "outcome": {
-            "const": "ready_for_review"
-          }
-        },
-        "required": [
-          "outcome"
-        ]
-      },
-      "then": {
-        "required": [
-          "verdict"
-        ]
-      }
-    }
-  ]
+  "$id": "https://github.com/MrFlashAccount/Skills/schemas/workflow/dev-harness/review-dispatch-output"
 }

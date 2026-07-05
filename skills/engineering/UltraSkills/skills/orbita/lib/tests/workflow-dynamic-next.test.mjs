@@ -3,7 +3,7 @@ import { spawnSync } from 'node:child_process';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import test, { after } from 'node:test';
+import { afterAll, test } from 'bun:test';
 import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../..');
@@ -51,11 +51,19 @@ const outputSchemas = {
   }),
   'dynamic-value-output-schema.json': schemaDoc({ required: ['outcome', 'dynamic_value'], properties: { dynamic_value: dynamicValueSchema } }),
   'dynamic-match-value-output-schema.json': schemaDoc({ required: ['outcome', 'dynamic_value'], properties: { dynamic_value: dynamicMatchValueSchema } }),
+  'two-way-match-output-schema.json': schemaDoc({ required: ['outcome', 'status'], properties: { status: { enum: ['ready', 'retry'] } } }),
   'planning-draft-output-schema.json': schemaDoc({
     required: ['outcome', 'selected_reviewers', 'route'],
     properties: {
       selected_reviewers: { type: 'array', minItems: 1, uniqueItems: true, items: { enum: ['review_a', 'review_b'] } },
-      route: { enum: ['review', 'blocked'] },
+      route: { enum: ['review'] },
+    },
+  }),
+  'loop-route-output-schema.json': schemaDoc({
+    required: ['outcome', 'route'],
+    properties: {
+      outcome: { const: 'ready' },
+      route: { enum: ['fix', 'done'] },
     },
   }),
 };
@@ -83,7 +91,6 @@ function workflow(next = '${{ output.next }}', selectorSchema = schemaForNext(ne
     version: 1,
     start: 'selector',
     done: 'done',
-    blocked: 'blocked',
     steps: {
       selector: {
         name: 'Selector',
@@ -97,7 +104,6 @@ function workflow(next = '${{ output.next }}', selectorSchema = schemaForNext(ne
       review_b: { name: 'Review B', kind: 'worker', input: {}, output: outputContract(), next: 'join' },
       join: { name: 'Join', kind: 'worker', input: {}, output: outputContract(), next: 'done' },
       done: { name: 'Done', kind: 'done', input: { prompt: 'Done.' } },
-      blocked: { name: 'Blocked', kind: 'blocked', input: { prompt: 'Blocked.' } },
     },
   };
 }
@@ -143,7 +149,42 @@ function runInspect(label, batonDoc, expectSuccess = true, workflowDoc = workflo
   return runCli(label, 'inspect', batonDoc, expectSuccess, workflowDoc);
 }
 
-after(() => rmSync(tempDir, { recursive: true, force: true }));
+afterAll(() => rmSync(tempDir, { recursive: true, force: true }));
+
+function loopWorkflow(overrides = {}) {
+  return {
+    name: 'loop-policy-spec',
+    version: 1,
+    start: 'review',
+    done: 'done',
+    blocked: 'blocked',
+    loopPolicies: {
+      review_fix: { steps: ['review', 'fix'], maxIterations: 2, onLimit: 'blocked' },
+    },
+    steps: {
+      review: {
+        name: 'Review',
+        kind: 'worker',
+        input: {},
+        output: outputContract('loop-route-output-schema.json'),
+        next: { match: '${{ output.route }}', cases: { fix: 'fix', done: 'done' } },
+      },
+      fix: { name: 'Fix', kind: 'worker', input: {}, output: outputContract(), next: 'review' },
+      done: { name: 'Done', kind: 'done', input: { prompt: 'Done.' } },
+      blocked: { name: 'Blocked', kind: 'done', input: { prompt: 'Blocked.' } },
+    },
+    ...overrides,
+  };
+}
+
+function loopBaton(overrides = {}) {
+  return {
+    cursor: 'review',
+    status: 'running',
+    state: { artifacts: [], results: [] },
+    ...overrides,
+  };
+}
 
 test('dynamic output string routes to the selected existing step', () => {
   const response = runApply('output-string', baton(), { outcome: 'ready', next: 'review_a' });
@@ -186,6 +227,47 @@ test('dynamic output array prepares and executes parallel steps like static arra
   );
   assert.equal(joined.baton.cursor, 'join');
   assert.deepEqual(joined.baton.state.results.map((result) => result.summary), ['a', 'b']);
+});
+
+test('loopPolicies count selected internal route events and reroute to onLimit on exhaustion', () => {
+  const first = runApply('loop-review-to-fix', loopBaton(), { outcome: 'ready', route: 'fix' }, true, loopWorkflow());
+  assert.equal(first.baton.cursor, 'fix');
+  assert.deepEqual(first.baton.state.$loopProgress, { review_fix: 1 });
+
+  const second = runApply('loop-fix-to-review', first.baton, { outcome: 'ready' }, true, loopWorkflow());
+  assert.equal(second.baton.cursor, 'review');
+  assert.deepEqual(second.baton.state.$loopProgress, { review_fix: 2 });
+
+  const exhausted = runApply('loop-exhausted', second.baton, { outcome: 'ready', route: 'fix' }, true, loopWorkflow());
+  assert.equal(exhausted.baton.cursor, 'blocked');
+  assert.equal(exhausted.baton.status, 'done');
+  assert.deepEqual(exhausted.baton.state.$loopProgress, { review_fix: 2 });
+
+  const singletonArrayWorkflow = loopWorkflow();
+  singletonArrayWorkflow.steps.review.next = ['fix'];
+  const singletonFirst = runApply('loop-singleton-review-to-fix', loopBaton(), { outcome: 'ready', route: 'fix' }, true, singletonArrayWorkflow);
+  assert.equal(singletonFirst.baton.cursor, 'fix');
+  assert.deepEqual(singletonFirst.baton.state.$loopProgress, { review_fix: 1 });
+
+  const singletonSecond = runApply('loop-singleton-fix-to-review', singletonFirst.baton, { outcome: 'ready' }, true, singletonArrayWorkflow);
+  assert.equal(singletonSecond.baton.cursor, 'review');
+  assert.deepEqual(singletonSecond.baton.state.$loopProgress, { review_fix: 2 });
+
+  const singletonExhausted = runApply('loop-singleton-exhausted', singletonSecond.baton, { outcome: 'ready', route: 'fix' }, true, singletonArrayWorkflow);
+  assert.equal(singletonExhausted.baton.cursor, 'blocked');
+  assert.equal(singletonExhausted.baton.status, 'done');
+  assert.deepEqual(singletonExhausted.baton.state.$loopProgress, { review_fix: 2 });
+});
+
+test('output schema retries do not increment loop policy progress', () => {
+  const retry = runApply('loop-retry-no-progress', loopBaton(), { outcome: 'ready' }, true, loopWorkflow());
+  assert.equal(retry.baton.cursor, 'review');
+  assert.deepEqual(retry.baton.state.attempts, { 'review:output.schema': 1 });
+  assert.equal(retry.baton.state.$loopProgress, undefined);
+
+  const valid = runApply('loop-valid-after-retry', retry.baton, { outcome: 'ready', route: 'fix' }, true, loopWorkflow());
+  assert.equal(valid.baton.cursor, 'fix');
+  assert.deepEqual(valid.baton.state.$loopProgress, { review_fix: 1 });
 });
 
 test('dynamic input state path routes correctly', () => {
@@ -267,13 +349,13 @@ test('dynamic parallel next enforces join-shape validation', () => {
 });
 
 test('match/cases output path routes string target', () => {
-  const matchWorkflow = workflow({ match: '${{ output.outcome }}', cases: { ready: 'review_b', blocked: 'blocked' } });
+  const matchWorkflow = workflow({ match: '${{ output.outcome }}', cases: { ready: 'review_b' } });
   const matched = runApply('match-cases-output-string', baton(), { outcome: 'ready' }, true, matchWorkflow);
   assert.equal(matched.baton.cursor, 'review_b');
 });
 
 test('match/cases input path routes target', () => {
-  const matchWorkflow = workflow({ match: '${{ input.planning_draft.route }}', cases: { review: 'review_a', blocked: 'blocked' } });
+  const matchWorkflow = workflow({ match: '${{ input.planning_draft.route }}', cases: { review: 'review_a' } });
   const matched = runApply(
     'match-cases-input-string',
     baton({ state: { artifacts: [], results: [], planning_draft: { selected_reviewers: ['review_a', 'review_b'], route: 'review' } } }),
@@ -285,16 +367,16 @@ test('match/cases input path routes target', () => {
 });
 
 test('match/cases target can be a string array', () => {
-  const matchWorkflow = workflow({ match: '${{ output.outcome }}', cases: { ready: ['review_a', 'review_b'], blocked: 'blocked' } });
+  const matchWorkflow = workflow({ match: '${{ output.outcome }}', cases: { ready: ['review_a', 'review_b'] } });
   const matched = runApply('match-cases-array-target', baton(), { outcome: 'ready' }, true, matchWorkflow);
   assert.deepEqual(matched.steps.map((step) => step.id), ['review_a', 'review_b']);
 });
 
 test('match/cases rejects missing cases and non-string match results', () => {
-  const matchWorkflow = workflow({ match: '${{ output.outcome }}', cases: { ready: 'review_b' } });
+  const matchWorkflow = workflow({ match: '${{ output.status }}', cases: { ready: 'review_b' } }, 'two-way-match-output-schema.json');
   assert.match(
-    runApply('match-cases-missing-case', baton(), { outcome: 'blocked' }, false, matchWorkflow).stderr,
-    /next\.cases is missing schema-declared case 'blocked'/,
+    runApply('match-cases-missing-case', baton(), { outcome: 'ready', status: 'retry' }, false, matchWorkflow).stderr,
+    /next\.cases is missing schema-declared case 'retry'/,
   );
 
   const openStringWorkflow = workflow({ match: '${{ output.next }}', cases: { review_a: 'review_b' } }, 'open-next-output-schema.json');
@@ -326,7 +408,7 @@ test('match/cases array target rejects empty, duplicate, unknown, and nested arr
     ['case-array-unknown', ['review_a', 'missing'], /target not found: missing/],
     ['case-array-nested', ['review_a', ['review_b']], /workflow failed schema validation|must resolve to non-empty string step ids/],
   ]) {
-    const matchWorkflow = workflow({ match: '${{ output.outcome }}', cases: { ready: target, blocked: 'blocked' } });
+    const matchWorkflow = workflow({ match: '${{ output.outcome }}', cases: { ready: target } });
     assert.match(runApply(label, baton(), { outcome: 'ready' }, false, matchWorkflow).stderr, pattern);
   }
 });

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import test from 'node:test';
+import { test } from 'bun:test';
 import { renderWorkflowPrompt as renderCompiledWorkflowPrompt } from '../compiler/index.mjs';
 import { Template, renderWorkflowPrompt } from '../index.mjs';
 
@@ -9,7 +9,6 @@ const workflow = {
   instruction: 'Keep workflow-level context visible.',
   start: 'consumer',
   done: 'done',
-  blocked: 'blocked',
   steps: {
     producer: { name: 'Producer', kind: 'worker', output: { schema: 'producer.schema.json' }, next: 'consumer' },
     consumer: {
@@ -20,7 +19,6 @@ const workflow = {
       next: 'done',
     },
     done: { name: 'Done', kind: 'done' },
-    blocked: { name: 'Blocked', kind: 'blocked' },
   },
 };
 
@@ -175,6 +173,9 @@ test('renderWorkflowPrompt assembles templates, required reads, output contract,
   assert.match(rendered.prompt, /<!-- output schema: consumer\.schema\.json -->/);
   assert.match(rendered.prompt, /Artifact output directory for this step: \/tmp\/workflow-runner-test\/consumer\/artifacts/);
   assert.match(rendered.prompt, /Use the artifact id as the artifact file name\/stem/);
+  assert.match(rendered.prompt, /Keep artifact bodies only in those files/);
+  assert.match(rendered.prompt, /JSON output must contain artifact metadata only/);
+  assert.match(rendered.prompt, /never the markdown\/file body or other full artifact content/);
   assert.match(rendered.prompt, /artifacts\[\]\.path to the full absolute filesystem path/);
   assert.match(rendered.prompt, /Debug history summary:/);
   assert.match(rendered.prompt, /\/tmp\/workflow-runner-test\/consumer\/debug-summary\.md/);
@@ -211,7 +212,7 @@ test('renderWorkflowPrompt injects provided validating writer command into outpu
     step: workflow.steps.consumer,
     resources: {
       ...resources,
-      validatingWriterCommand: "node ./lib/entrypoints/cli/workflow-runner.mjs write-output --run-id example --step-id consumer --lease-token example-token --debug-summary-file /tmp/workflow-runner-test/consumer/debug-summary.md <<'JSON'\n<paste strict JSON here>\nJSON",
+      validatingWriterCommand: "bun ./lib/entrypoints/cli/workflow-runner.mjs write-output --run-id example --step-id consumer --lease-token example-token --debug-summary-file /tmp/workflow-runner-test/consumer/debug-summary.md <<'JSON'\n<paste strict JSON here>\nJSON",
       debugSummaryPath: '/tmp/workflow-runner-test/consumer/debug-summary.md',
     },
   });

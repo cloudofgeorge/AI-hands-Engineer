@@ -1,20 +1,18 @@
 import assert from 'node:assert/strict';
-import test from 'node:test';
+import { test } from 'bun:test';
 import { WorkflowRuntimeError } from '../../../errors.mjs';
 import { applyOutputToBatonState } from '../../../runtime/baton-state.mjs';
 import { Baton } from '../index.mjs';
-import { assertBatonSchema } from '../schema/baton-schema.mjs';
+import { assertBatonSchema } from '../../../file-contracts/baton/baton-schema.mjs';
 
 const workflow = {
   name: 'baton-fixture',
   version: 1,
   start: 'worker',
   done: 'done',
-  blocked: 'blocked',
   steps: {
     worker: { name: 'Worker', kind: 'worker', next: 'done' },
     done: { name: 'Done', kind: 'done' },
-    blocked: { name: 'Blocked', kind: 'blocked' },
   },
 };
 
@@ -73,6 +71,20 @@ test('Baton applies output by merging artifacts, appending results, storing atte
   assert.deepEqual(applied.state.results, [{ id: 'r1' }, { id: 'r2' }]);
   assert.deepEqual(applied.state.worker.outcome, 'ok');
   assert.deepEqual(applied.state.attempts, { worker: 2 });
+});
+
+
+test('Baton schema and semantic validation accept loop counters only', () => {
+  const valid = baton({ state: { artifacts: [], results: [], $loopProgress: { review_fix: 2 } } });
+  assert.doesNotThrow(() => assertBatonSchema(valid));
+  assert.deepEqual(new Baton(valid).validateAgainst(workflow), { ok: true });
+
+  const invalidPolicyPayload = baton({ state: { artifacts: [], results: [], $loopProgress: { review_fix: { maxIterations: 2 } } } });
+  assert.throws(() => assertBatonSchema(invalidPolicyPayload), /baton/);
+  assert.throws(
+    () => new Baton(invalidPolicyPayload).validateAgainst(workflow),
+    /state\.\$loopProgress\.review_fix must be a non-negative integer counter/,
+  );
 });
 
 

@@ -3,7 +3,7 @@ import { spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import test, { after } from 'node:test';
+import { afterAll, test } from 'bun:test';
 import { fileURLToPath } from 'node:url';
 import { resolveRunPaths } from '../../persistence/run-state/paths.mjs';
 
@@ -51,7 +51,7 @@ function claimRunForRunnerArgs(args) {
   const createArgs = ['skills/orbita/lib/entrypoints/cli/workflow-runs.mjs', 'create', '--claim', '--run-id', runIdValue];
   const workflow = valueAfter(args, '--workflow');
   if (workflow !== undefined) createArgs.push('--workflow', workflow);
-  const created = spawnSync(process.execPath, createArgs, { cwd: root, encoding: 'utf8' });
+  const created = spawnSync(process.execPath, createArgs, { cwd: root, encoding: 'utf8', env: process.env });
   assert.equal(created.status, 0, `claim ${runIdValue} failed\nstdout:\n${created.stdout}\nstderr:\n${created.stderr}`);
   const token = JSON.parse(created.stdout).leaseToken;
   leaseTokensByRunId.set(runIdValue, token);
@@ -68,6 +68,7 @@ function runRunner(args, options = {}) {
   return spawnSync(process.execPath, ['skills/orbita/lib/entrypoints/cli/workflow-runner.mjs', ...withLeaseToken(args, token)], {
     cwd: root,
     encoding: 'utf8',
+    env: process.env,
     input: options.input,
   });
 }
@@ -153,7 +154,7 @@ function writeRunArtifact(run, artifactPath, content) {
   writeFileSync(fullPath, content);
 }
 
-after(() => rmSync(tempDir, { recursive: true, force: true }));
+afterAll(() => rmSync(tempDir, { recursive: true, force: true }));
 
 test('E2E fixture: long happy path loops through review revision and preserves latest state', () => {
   const workflow = fixture('long-revision.workflow.json');
@@ -180,7 +181,7 @@ test('E2E fixture: long happy path loops through review revision and preserves l
   assert.equal(approved.baton.state.approval_gate.approval, 'approved');
   const implementInstructions = instructions(run, 'implement');
   assert.match(implementInstructions, /Approval decision:/);
-  assert.match(implementInstructions, /"approval": "approved"/);
+  assert.match(implementInstructions, /"approval"\s*:\s*"approved"/);
 
   assert.equal(continueWith(run, workflow, output('implement-v1.json'), 'continue implementation v1').baton.cursor, 'review');
   const revision = continueWith(run, workflow, output('review-retry.json'), 'continue review retry');
@@ -222,7 +223,7 @@ test('E2E fixture: DevHarness-style artifact path is required-read context for d
   assert.doesNotMatch(reviewInstructions, /Concrete implementation artifact content for reviewer\./);
 });
 
-test('E2E fixture: match route covers retry loop and blocked terminal variant', () => {
+test('E2E fixture: match route covers retry loop and recoverable blocked output', () => {
   const workflow = fixture('route-retry-blocked.workflow.json');
   const retryRun = runDir('route-retry');
 
@@ -241,10 +242,16 @@ test('E2E fixture: match route covers retry loop and blocked terminal variant', 
   const blockedRun = runDir('route-blocked');
   next(blockedRun, workflow);
   const blocked = continueWith(blockedRun, workflow, output('triage-blocked.json'), 'continue triage blocked');
-  assert.equal(blocked.status, 'blocked');
-  assert.equal(blocked.baton.cursor, 'blocked');
-  assert.deepEqual(blocked.baton.blocker, { reason: 'missing decision' });
-  assert.match(readHistory(blockedRun), /blocker: \{"reason":"missing decision"\}/);
+  assert.equal(blocked.status, 'needs_host_actions');
+  assert.equal(blocked.baton.cursor, 'triage');
+  assert.deepEqual(blocked.baton.recoverableWorkerBlockers.triage, {
+    summary: 'missing decision',
+    source_step_id: 'triage',
+    needed: 'Provide the missing decision.',
+  });
+  assert.equal(blocked.requests[0].stepId, 'triage');
+  assert.match(readHistory(blockedRun), /blocker summary: missing decision/);
+  assert.match(readHistory(blockedRun), /action=resolve_worker_blocker/);
 });
 
 test('E2E fixture: mixed static and match fanout requires named branch outputs and exposes join state', () => {
@@ -331,4 +338,58 @@ test('E2E fixture: approval-first workflow preserves startup prompt for first wo
   assert.equal(done.status, 'done');
   assert.equal(done.baton.user_prompt, userPrompt);
   assert.equal(done.baton.user_prompt_injected, true);
+});
+
+test('E2E fixture: loopPolicies exhaust approval and implementation revision loops', () => {
+  const workflow = fixture('loop-policies-approval-revision.workflow.json');
+
+  const approvalRun = runDir('loop-policy-approval-revision');
+  next(approvalRun, workflow);
+  assert.equal(continueWith(approvalRun, workflow, output('plan-ready.json'), 'continue approval revision plan v1').baton.cursor, 'approval_gate');
+  assert.deepEqual(readBaton(approvalRun).state.$loopProgress, { approval_revision: 1 });
+
+  const rejected = continueWith(approvalRun, workflow, output('approval-rejected.json'), 'continue approval rejected');
+  assert.equal(rejected.baton.cursor, 'plan');
+  assert.deepEqual(rejected.baton.state.$loopProgress, { approval_revision: 2 });
+
+  const exhaustedApproval = continueWith(approvalRun, workflow, output('plan-ready.json'), 'continue approval revision exhaustion');
+  assert.equal(exhaustedApproval.status, 'done');
+  assert.equal(exhaustedApproval.baton.cursor, 'blocked');
+  assert.deepEqual(exhaustedApproval.baton.state.$loopProgress, { approval_revision: 2 });
+
+  const implementationRun = runDir('loop-policy-implementation-revision');
+  next(implementationRun, workflow);
+  continueWith(implementationRun, workflow, output('plan-ready.json'), 'continue implementation revision plan');
+  continueWith(implementationRun, workflow, output('approval-approved.json'), 'continue implementation revision approval');
+
+  assert.equal(continueWith(implementationRun, workflow, output('implement-v1.json'), 'continue implementation revision v1').baton.cursor, 'review');
+  assert.deepEqual(readBaton(implementationRun).state.$loopProgress, { approval_revision: 1, implementation_revision: 1 });
+
+  const revision = continueWith(implementationRun, workflow, output('review-retry.json'), 'continue implementation revision retry');
+  assert.equal(revision.baton.cursor, 'implement');
+  assert.deepEqual(revision.baton.state.$loopProgress, { approval_revision: 1, implementation_revision: 2 });
+
+  const exhaustedImplementation = continueWith(implementationRun, workflow, output('implement-v2.json'), 'continue implementation revision exhaustion');
+  assert.equal(exhaustedImplementation.status, 'done');
+  assert.equal(exhaustedImplementation.baton.cursor, 'blocked');
+  assert.deepEqual(exhaustedImplementation.baton.state.$loopProgress, { approval_revision: 1, implementation_revision: 2 });
+});
+
+test('E2E fixture: loopPolicies exhaust self-loop workflow', () => {
+  const workflow = fixture('loop-policies-self-loop.workflow.json');
+  const run = runDir('loop-policy-self-loop');
+
+  next(run, workflow);
+  const firstRetry = continueWith(run, workflow, output('self-retry.json'), 'continue self-loop retry 1');
+  assert.equal(firstRetry.baton.cursor, 'self_check');
+  assert.deepEqual(firstRetry.baton.state.$loopProgress, { self_check: 1 });
+
+  const secondRetry = continueWith(run, workflow, output('self-retry.json'), 'continue self-loop retry 2');
+  assert.equal(secondRetry.baton.cursor, 'self_check');
+  assert.deepEqual(secondRetry.baton.state.$loopProgress, { self_check: 2 });
+
+  const exhausted = continueWith(run, workflow, output('self-retry.json'), 'continue self-loop exhaustion');
+  assert.equal(exhausted.status, 'done');
+  assert.equal(exhausted.baton.cursor, 'blocked');
+  assert.deepEqual(exhausted.baton.state.$loopProgress, { self_check: 2 });
 });

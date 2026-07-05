@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/MrFlashAccount/Skills/schemas/workflow/workflow",
   "title": "Workflow Document",
-  "description": "Workflow documents use the flat workflow root: name, version, start, done, blocked, and steps are defined at the JSON root.",
+  "description": "Workflow documents use the flat workflow root: name, version, start, done, and steps are defined at the JSON root.",
   "$ref": "#/$defs/workflow",
   "$defs": {
     "step": {
@@ -15,7 +15,7 @@
           "$ref": "#/$defs/approvalStep"
         },
         {
-          "$ref": "#/$defs/blockedStep"
+          "$ref": "#/$defs/matrixStep"
         },
         {
           "$ref": "#/$defs/doneStep"
@@ -49,8 +49,142 @@
         "output": {
           "$ref": "#/$defs/output"
         },
+        "sharding": {
+          "$ref": "#/$defs/shardingPolicy"
+        },
         "next": {
           "$ref": "#/$defs/next"
+        }
+      },
+      "additionalProperties": false
+    },
+    "matrixStep": {
+      "type": "object",
+      "required": [
+        "name",
+        "kind",
+        "source",
+        "worker",
+        "next"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "const": "matrix"
+        },
+        "source": {
+          "$ref": "#/$defs/matrixSource"
+        },
+        "max_parallel": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 16
+        },
+        "max_attempts": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10
+        },
+        "worker": {
+          "$ref": "#/$defs/matrixWorkerTemplate"
+        },
+        "next": {
+          "$ref": "#/$defs/next"
+        }
+      },
+      "additionalProperties": false
+    },
+    "matrixSource": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/staticMatrixSource"
+        },
+        {
+          "$ref": "#/$defs/dynamicMatrixSource"
+        }
+      ]
+    },
+    "staticMatrixSource": {
+      "type": "object",
+      "required": [
+        "items"
+      ],
+      "properties": {
+        "items": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/staticMatrixUnit"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "staticMatrixUnit": {
+      "type": "object",
+      "required": [
+        "id"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]+$"
+        },
+        "context": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "dynamicMatrixSource": {
+      "type": "object",
+      "required": [
+        "from"
+      ],
+      "properties": {
+        "from": {
+          "type": "string",
+          "minLength": 1
+        },
+        "id_field": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_-]*$"
+        },
+        "context_fields": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z_][A-Za-z0-9_-]*$"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "matrixWorkerTemplate": {
+      "type": "object",
+      "required": [
+        "input",
+        "output"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "agent": {
+          "type": "string",
+          "minLength": 1
+        },
+        "input": {
+          "$ref": "#/$defs/workerInput"
+        },
+        "output": {
+          "$ref": "#/$defs/output"
         }
       },
       "additionalProperties": false
@@ -95,26 +229,6 @@
         },
         "kind": {
           "const": "done"
-        },
-        "input": {
-          "$ref": "#/$defs/input"
-        }
-      },
-      "additionalProperties": false
-    },
-    "blockedStep": {
-      "type": "object",
-      "required": [
-        "name",
-        "kind"
-      ],
-      "properties": {
-        "name": {
-          "type": "string",
-          "minLength": 1
-        },
-        "kind": {
-          "const": "blocked"
         },
         "input": {
           "$ref": "#/$defs/input"
@@ -211,6 +325,72 @@
       },
       "additionalProperties": false
     },
+    "shardingPolicy": {
+      "type": "object",
+      "required": [
+        "enabled",
+        "mode",
+        "obligations"
+      ],
+      "properties": {
+        "enabled": {
+          "const": true
+        },
+        "mode": {
+          "const": "review_shards"
+        },
+        "privacy_route": {
+          "const": "safe_context"
+        },
+        "max_attempts": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "obligations": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/shardObligation"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "shardObligation": {
+      "type": "object",
+      "required": [
+        "shard_id",
+        "reviewer_role"
+      ],
+      "properties": {
+        "shard_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]+$"
+        },
+        "reviewer_role": {
+          "type": "string",
+          "minLength": 1
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "privacy_route": {
+          "const": "safe_context"
+        },
+        "max_attempts": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "source_evidence": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "additionalProperties": false
+    },
     "approvalOutput": {
       "type": "object",
       "required": [
@@ -263,6 +443,34 @@
       },
       "additionalProperties": false
     },
+    "loopPolicy": {
+      "type": "object",
+      "required": [
+        "steps",
+        "maxIterations",
+        "onLimit"
+      ],
+      "properties": {
+        "steps": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "maxIterations": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "onLimit": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": false
+    },
     "workflow": {
       "type": "object",
       "required": [
@@ -270,7 +478,6 @@
         "version",
         "start",
         "done",
-        "blocked",
         "steps"
       ],
       "not": {
@@ -298,15 +505,19 @@
           "type": "string",
           "minLength": 1
         },
-        "blocked": {
-          "type": "string",
-          "minLength": 1
-        },
         "steps": {
           "type": "object",
           "minProperties": 1,
           "additionalProperties": {
             "$ref": "#/$defs/step"
+          }
+        },
+        "loopPolicies": {
+          "description": "Optional loop policies keyed by policy id. Each policy must cover exactly one semantic validation-proven SCC or self-loop region. Runtime counts selected internal route events and routes to onLimit when maxIterations would be exceeded.",
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {
+            "$ref": "#/$defs/loopPolicy"
           }
         }
       },

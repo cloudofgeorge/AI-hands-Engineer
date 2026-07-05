@@ -4,16 +4,16 @@ import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
 import { get } from 'node:http';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import test, { after } from 'node:test';
+import { afterAll, test } from 'bun:test';
 import { fileURLToPath } from 'node:url';
-import { listDashboardRuns, getDashboardRun, startDashboardServer } from '../entrypoints/api/dashboard.mjs';
+import { listDashboardRuns, getDashboardRun, startDashboardServer } from '../dashboard/api.mjs';
 import { DashboardEventPublisher } from '../dashboard/server/dashboard-event-publisher.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../..');
-const defaultWorkflow = path.join(root, 'workflows/dev-harness/workflow.json');
+const defaultWorkflow = path.join(root, 'workflows/dev-harness/workflow.toml');
 const tempRoots = [];
 
-after(async () => {
+afterAll(async () => {
   for (const dir of tempRoots) rmSync(dir, { recursive: true, force: true });
 });
 
@@ -99,7 +99,7 @@ test('dashboard projection exposes safe DTOs with lanes, parallel cursor, minima
     },
   }, [
     'visible line',
-    "node workflow-runner.mjs instructions --run-id secret --lease-token lease-secret",
+    "bun workflow-runner.mjs instructions --run-id secret --lease-token lease-secret",
     'WORKFLOW_RUN_TOKEN=lease-secret bind-agent preferred agent',
     'kept line',
   ].join('\n'));
@@ -124,6 +124,47 @@ test('dashboard projection exposes safe DTOs with lanes, parallel cursor, minima
   assert.deepEqual(run.miniMap.completedSteps, ['backend_implementation']);
   assert.deepEqual(run.historyExcerpt.lines, ['visible line', 'kept line']);
   jsonDoesNotContainForbiddenValues(run);
+});
+
+test('dashboard projection treats resolved recoveries as worker continuation, not blocked', async () => {
+  const runsRoot = await makeRunsRoot('resolved-recovery');
+  const unresolvedId = `dashboard-unresolved-recovery-${process.pid}`;
+  const resolvedId = `dashboard-resolved-recovery-${process.pid}`;
+  await writeIndex(runsRoot, {
+    [unresolvedId]: indexRun(unresolvedId, { title: 'Unresolved recovery' }),
+    [resolvedId]: indexRun(resolvedId, { title: 'Resolved recovery' }),
+  });
+  const recovery = {
+    summary: 'Need approval before continuing.',
+    source_step_id: 'backend_implementation',
+    needed: 'Approve the smallest recovery question.',
+  };
+  await writeRunState(runsRoot, unresolvedId, {
+    cursor: 'backend_implementation',
+    status: 'running',
+    recoverableWorkerBlockers: { backend_implementation: recovery },
+    state: { artifacts: [], results: [] },
+  });
+  await writeRunState(runsRoot, resolvedId, {
+    cursor: 'backend_implementation',
+    status: 'running',
+    recoverableWorkerBlockers: {
+      backend_implementation: {
+        ...recovery,
+        resolution: {
+          summary: 'Approval was granted.',
+          decision: 'Proceed with the smallest recovery question approved.',
+        },
+      },
+    },
+    state: { artifacts: [], results: [] },
+  });
+
+  const runs = await listDashboardRuns({ runsRoot });
+  const byId = new Map(runs.map((run) => [run.runId, run]));
+
+  assert.equal(byId.get(unresolvedId).lane.id, 'blocked');
+  assert.equal(byId.get(resolvedId).lane.id, 'worker_running');
 });
 
 test('dashboard list isolates per-run read failures as degraded without hiding healthy runs', async () => {

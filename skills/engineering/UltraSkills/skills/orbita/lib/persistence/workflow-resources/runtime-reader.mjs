@@ -6,7 +6,8 @@ import { isInside } from '../filesystem/path-safety.mjs';
 import { WorkflowRuntimeError } from '../../errors.mjs';
 import { listAllowedWorkflowRoles, workflowRoleMaterialPath, REQUIRED_WORKFLOW_ROLE_MATERIAL_FILES } from './role-material-catalog.mjs';
 import { assertWorkflowSchema } from '../../file-contracts/workflow-document-schema.mjs';
-import { assertBatonSchema, batonSchema } from '../../entities/Baton/schema/baton-schema.mjs';
+import { readWorkflowDocument } from './workflow-document-reader.mjs';
+import { assertBatonSchema, batonSchema } from '../../file-contracts/baton/baton-schema.mjs';
 
 function readJson(pathname, kind) {
   try {
@@ -20,7 +21,12 @@ function templateRefs(workflow) {
   const refs = [];
   const seen = new Set();
   for (const step of Object.values(workflow?.steps ?? {})) {
-    for (const [fieldName, ref] of [['input', step?.input?.template], ['output', step?.output?.template]]) {
+    for (const [fieldName, ref] of [
+      ['input', step?.input?.template],
+      ['output', step?.output?.template],
+      ['input', step?.worker?.input?.template],
+      ['output', step?.worker?.output?.template],
+    ]) {
       if (!ref || seen.has(`${fieldName}:${ref}`)) continue;
       seen.add(`${fieldName}:${ref}`);
       refs.push({ ref, fieldName });
@@ -31,13 +37,22 @@ function templateRefs(workflow) {
 
 function schemaRefs(workflow) {
   const refs = new Set();
-  for (const step of Object.values(workflow?.steps ?? {})) if (step?.output?.schema) refs.add(step.output.schema);
+  for (const step of Object.values(workflow?.steps ?? {})) {
+    if (step?.output?.schema) refs.add(step.output.schema);
+    if (step?.worker?.output?.schema) refs.add(step.worker.output.schema);
+  }
   return refs;
 }
 
 function roleNames(workflow) {
   const roles = new Set();
-  for (const step of Object.values(workflow?.steps ?? {})) if (step?.input?.role) roles.add(step.input.role);
+  for (const step of Object.values(workflow?.steps ?? {})) {
+    if (step?.input?.role) roles.add(step.input.role);
+    if (step?.worker?.input?.role) roles.add(step.worker.input.role);
+    for (const obligation of step?.sharding?.obligations ?? []) {
+      if (typeof obligation?.reviewer_role === 'string' && obligation.reviewer_role.length > 0) roles.add(obligation.reviewer_role);
+    }
+  }
   return roles;
 }
 
@@ -150,7 +165,7 @@ export function loadWorkflowResources({ workflow, workflowPath, repositoryRoot =
 }
 
 export function loadWorkflowRuntime({ workflowPath, batonPath, baton }) {
-  const workflow = readJson(workflowPath, 'workflow');
+  const workflow = readWorkflowDocument(workflowPath, 'workflow');
   assertWorkflowSchema(workflow);
   const batonDoc = baton ?? readJson(batonPath, 'baton');
   assertBatonSchema(batonDoc);

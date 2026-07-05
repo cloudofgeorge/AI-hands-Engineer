@@ -3,11 +3,11 @@ import { spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import test, { after } from 'node:test';
+import { afterAll, test } from 'bun:test';
 import { fileURLToPath } from 'node:url';
 import { renderWorkflowPrompt } from '../entities/Template/index.mjs';
 import { SchemaValidationError } from '../../../../shared/scripts/schema-validation/schema-validation.mjs';
-import { validateAgainstOutputSchema as validateLoadedOutputSchema } from '../use-cases/runtime/output/output-schema-validation.mjs';
+import { validateAgainstOutputSchema as validateLoadedOutputSchema } from '../runtime/output/output-schema-validation.mjs';
 import { loadWorkflowResources } from '../persistence/workflow-resources/runtime-reader.mjs';
 import { artifactPathBoundaryErrors } from '../persistence/workflow-resources/artifact-path-boundaries.mjs';
 
@@ -27,23 +27,21 @@ const workflowDoc = {
     version: 1,
     start: 'worker_step',
     done: 'done',
-    blocked: 'blocked',
     steps: {
       worker_step: {
         name: 'Worker step',
         kind: 'worker',
         input: { prompt: 'Run worker.' },
         output: { template: 'output.md', schema: 'worker-output.schema.json' },
-        next: { match: '${{ output.outcome }}', cases: { ready: 'done', blocked: 'blocked' } },
+        next: { match: '${{ output.outcome }}', cases: { ready: 'done' } },
       },
       consumer_step: {
         name: 'Consumer step',
         kind: 'approval',
         input: { prompt: 'Use prior worker output.' },
-        next: { match: '${{ output.approval }}', cases: { approved: 'done', blocked: 'blocked' } },
+        next: { match: '${{ output.approval }}', cases: { approved: 'done' } },
       },
       done: { name: 'Done', kind: 'done' },
-      blocked: { name: 'Blocked', kind: 'blocked' },
     },
 
 };
@@ -62,7 +60,7 @@ function baton(overrides = {}) {
   return { cursor: 'worker_step', status: 'running', state: { artifacts: [], results: [] }, ...overrides };
 }
 
-function runNode(args) {
+function runBun(args) {
   return spawnSync(process.execPath, args, { cwd: root, encoding: 'utf8' });
 }
 
@@ -114,7 +112,7 @@ function workflowWithSchema(label, schema) {
 }
 
 function runWorkflowCommand(label, args, expectSuccess = true) {
-  const response = expectCliResult(label, runNode(args), expectSuccess);
+  const response = expectCliResult(label, runBun(args), expectSuccess);
   return response;
 }
 
@@ -141,7 +139,7 @@ const structuredSchema = {
   additionalProperties: false,
 };
 
-after(() => rmSync(tempDir, { recursive: true, force: true }));
+afterAll(() => rmSync(tempDir, { recursive: true, force: true }));
 
 test('output.schema: workflow-package schema ref resolves consistently for validation and prompt rendering', () => {
   const repoDir = path.join(tempDir, 'workflow-package-repo');
@@ -215,7 +213,7 @@ test('output.schema: CLI apply rejects workflow schema refs escaping repository 
   writeFileSync(outputPath, `${JSON.stringify({ outcome: 'ready' }, null, 2)}
 `);
 
-  const result = runNode(['skills/orbita/lib/tests/helpers/workflow-runtime-harness.mjs', 'apply', workflowPath, batonPath, outputPath]);
+  const result = runBun(['skills/orbita/lib/tests/helpers/workflow-runtime-harness.mjs', 'apply', workflowPath, batonPath, outputPath]);
 
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /output schema escapes repository root/);
@@ -247,7 +245,7 @@ test('output.schema: CLI apply allows workflow-relative traversal to repo shared
   writeFileSync(batonPath, `${JSON.stringify(baton(), null, 2)}\n`);
   writeFileSync(outputPath, `${JSON.stringify({ outcome: 'ready' }, null, 2)}\n`);
 
-  const result = runNode(['skills/orbita/lib/tests/helpers/workflow-runtime-harness.mjs', 'apply', workflowPath, batonPath, outputPath]);
+  const result = runBun(['skills/orbita/lib/tests/helpers/workflow-runtime-harness.mjs', 'apply', workflowPath, batonPath, outputPath]);
 
   assert.equal(result.status, 0, result.stderr);
 });
@@ -275,7 +273,7 @@ test('output.schema: CLI apply rejects root-level workflow refs escaping workflo
   writeFileSync(batonPath, `${JSON.stringify(baton(), null, 2)}\n`);
   writeFileSync(outputPath, `${JSON.stringify({ outcome: 'ready' }, null, 2)}\n`);
 
-  const result = runNode(['skills/orbita/lib/tests/helpers/workflow-runtime-harness.mjs', 'apply', workflowPath, batonPath, outputPath]);
+  const result = runBun(['skills/orbita/lib/tests/helpers/workflow-runtime-harness.mjs', 'apply', workflowPath, batonPath, outputPath]);
 
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /output schema escapes repository root/);
@@ -301,7 +299,7 @@ test('output.schema: validate-workflow rejects schema refs escaping default repo
   const workflowPath = path.join(workflowDir, 'workflow.json');
   writeFileSync(workflowPath, `${JSON.stringify(doc, null, 2)}\n`);
 
-  const result = runNode(['skills/orbita/lib/entrypoints/cli/validate-workflow.mjs', workflowPath]);
+  const result = runBun(['skills/orbita/lib/entrypoints/cli/validate-workflow.mjs', workflowPath]);
 
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /output schema escapes repository root/);
@@ -508,7 +506,7 @@ test('output.schema: structured step output is available by step id in downstrea
 
   assert.doesNotMatch(renderResponse.steps[0].compiledPrompt.prompt, /## Prompt input context/);
   assert.match(renderResponse.steps[0].compiledPrompt.prompt, /Use prior worker payload:/);
-  assert.match(renderResponse.steps[0].compiledPrompt.prompt, /"ok": true/);
+  assert.match(renderResponse.steps[0].compiledPrompt.prompt, /"ok":true/);
   assert.doesNotMatch(renderResponse.steps[0].compiledPrompt.prompt, /Field notes for prompt input step outputs/);
   assert.doesNotMatch(renderResponse.steps[0].compiledPrompt.prompt, /\[object Object\]/);
 });
@@ -556,7 +554,7 @@ test('output.schema: inline prompt input structured output omits automatic schem
     '## Workflow step prompt',
     'Use prompt input payload:',
     '```json',
-    '"ok": true',
+    '"ok":true',
   ]);
   assert.doesNotMatch(renderResponse.prompt, /## Prompt input context/);
   assert.doesNotMatch(renderResponse.prompt, /Field notes for prompt input step outputs/);
@@ -641,7 +639,7 @@ test('output.schema: central artifact contract accepts simplified shape and reje
 
   assert.equal(validateAgainstOutputSchema({ schema, output: { outcome: 'ready', artifacts: [{ id: 'packet', content_type: 'text/markdown', path: '/runs/worker_step/artifacts/packet.md' }] } }).ok, true);
 
-  for (const staleField of ['type', 'kind', 'ref', 'producer_step_id', 'version', 'replaces', 'aliases']) {
+  for (const staleField of ['type', 'kind', 'ref', 'producer_step_id', 'version', 'replaces', 'aliases', 'content', 'body', 'markdown', 'text']) {
     const validation = validateAgainstOutputSchema({
       schema,
       output: { outcome: 'ready', artifacts: [{ id: 'packet', content_type: 'text/markdown', path: '/runs/worker_step/artifacts/packet.md', [staleField]: staleField === 'aliases' ? [] : 'legacy' }] },

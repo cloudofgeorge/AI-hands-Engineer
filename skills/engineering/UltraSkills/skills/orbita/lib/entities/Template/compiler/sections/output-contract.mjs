@@ -38,6 +38,7 @@ function artifactOutputDirectoryInstruction(artifactOutputDir) {
     `Artifact output directory for this step: ${trimmedDir}`,
     '- Write every generated artifact content file for this step inside that directory.',
     '- Use the artifact id as the artifact file name/stem unless the schema or step prompt is stricter.',
+    '- Keep artifact bodies only in those files. The JSON output must contain artifact metadata only, never the markdown/file body or other full artifact content.',
     '- Set artifacts[].path to the full absolute filesystem path of each created artifact file.',
     '- Do not use temp dirs, ad-hoc export paths, or paths outside the step artifact output directory.',
   ].join('\n');
@@ -57,8 +58,39 @@ function debugSummaryInstruction({ debugSummaryPath }) {
   ].join('\n');
 }
 
+function compactFollowUpOutputContract({ outputTemplate, templatePath, outputSchema, schemaPath, options }) {
+  const parts = [
+    'Continue using the same output contract that was previously loaded for this workflow step.',
+    'This follow-up omits the full template and schema; load fresh instructions instead if the previous contract is unavailable.',
+  ];
+  if (outputTemplate && templatePath) parts.push(`Output template: ${templatePath}`);
+  if (outputSchema && schemaPath) parts.push(`Output schema: ${schemaPath}`);
+  const artifactDirInstruction = artifactOutputDirectoryInstruction(options.artifactOutputDir);
+  if (artifactDirInstruction) parts.push(artifactDirInstruction);
+  const debugSummary = debugSummaryInstruction({ debugSummaryPath: options.debugSummaryPath });
+  if (debugSummary) parts.push(debugSummary);
+  const trimmedCommand = typeof options.validatingWriterCommand === 'string' ? options.validatingWriterCommand.trim() : '';
+  if (!trimmedCommand) {
+    parts.push(validatingWriterProtocol(trimmedCommand));
+    return section('Output contract', parts.filter(Boolean).join('\n\n'));
+  }
+  parts.push([
+    'Write the request output by calling this validating writer command. The command validates against the same output contract as the fresh instructions; only replace the JSON body/stdin content:',
+    '',
+    '```bash',
+    trimmedCommand,
+    '```',
+    '',
+    'If it fails with validation errors, fix the JSON and run the same command again. Do not create a separate JSON output file.',
+  ].join('\n'));
+  return section('Output contract', parts.filter(Boolean).join('\n\n'));
+}
+
 export function outputContractSection(outputTemplate, templatePath, outputSchema, schemaPath, outputSchemaValue, options = {}) {
   if (!outputTemplate && !outputSchema) return '';
+  if (options.compactFollowUp === true) {
+    return compactFollowUpOutputContract({ outputTemplate, templatePath, outputSchema, schemaPath, options });
+  }
   const parts = [];
   if (outputTemplate) {
     const templateComment = templatePath ? `\n\n<!-- output template: ${templatePath} -->` : '';

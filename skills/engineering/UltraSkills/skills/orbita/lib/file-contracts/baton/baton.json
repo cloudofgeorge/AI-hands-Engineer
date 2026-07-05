@@ -1,0 +1,759 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/MrFlashAccount/Skills/schemas/workflow/baton",
+  "title": "Workflow Baton",
+  "type": "object",
+  "required": [
+    "cursor",
+    "status",
+    "state"
+  ],
+  "properties": {
+    "cursor": {
+      "oneOf": [
+        {
+          "type": "string",
+          "minLength": 1
+        },
+        {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      ]
+    },
+    "status": {
+      "enum": [
+        "running",
+        "done"
+      ]
+    },
+    "state": {
+      "type": "object",
+      "required": [
+        "artifacts",
+        "results"
+      ],
+      "properties": {
+        "artifacts": {
+          "description": "Aggregate artifact metadata entries keyed outside the artifact contract by producer step id. Items must be { producerStepId, artifact }, where artifact follows the central artifact metadata contract.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/aggregateArtifact"
+          }
+        },
+        "results": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/result"
+          }
+        },
+        "attempts": {
+          "description": "Interpreter-owned retry counters keyed by workflow edge.",
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "$loopProgress": {
+          "description": "Interpreter-owned loop policy progress counters keyed by workflow loop policy id. Stores counters only, never policy definitions.",
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "shards": {
+          "description": "Runner-owned native sharding records keyed by owner workflow step id. Shards are not workflow step ids and do not store private host lifecycle metadata.",
+          "type": "object",
+          "patternProperties": {
+            "^[A-Za-z_][A-Za-z0-9_-]*$": {
+              "$ref": "#/$defs/shardPlan"
+            }
+          },
+          "additionalProperties": false
+        },
+        "matrix": {
+          "description": "Runner-owned matrix v1 unit progress keyed by owner workflow step id. Matrix records preserve owner cursor state and bounded synthetic request metadata.",
+          "type": "object",
+          "patternProperties": {
+            "^[A-Za-z_][A-Za-z0-9_-]*$": {
+              "$ref": "#/$defs/matrixPlan"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "patternProperties": {
+        "^[A-Za-z_][A-Za-z0-9_-]*$": {
+          "description": "Per-step worker output keyed by workflow step id for downstream prompt and transition input context."
+        }
+      },
+      "propertyNames": {
+        "not": {
+          "enum": [
+            "run",
+            "history"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "workerBindings": {
+      "description": "Runner-owned advisory worker reuse hints keyed by workflow step id or by the step's explicit logical agent name. Values are opaque host worker ids; this is not an attempt, lifecycle, session, transcript, or output registry.",
+      "type": "object",
+      "additionalProperties": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "recoverableWorkerBlockers": {
+      "description": "Runner-owned public recovery state for recoverable worker or approval blockers. Keys are workflow step ids; values without resolution are awaiting orchestrator resolution; values with resolution are resolved and waiting for the owning step to emit normal output. This is not a transcript, token, prompt, private runtime path, session, or lifecycle registry.",
+      "type": "object",
+      "patternProperties": {
+        "^[A-Za-z_][A-Za-z0-9_-]*$": {
+          "$ref": "#/$defs/recoverableWorkerBlocker"
+        }
+      },
+      "additionalProperties": false
+    },
+    "user_prompt": {
+      "description": "Raw run-level startup user prompt captured when the workflow run is initialized. Immutable after start/resume.",
+      "type": "string",
+      "allOf": [
+        {
+          "pattern": "\\S"
+        }
+      ]
+    },
+    "error": {
+      "type": "object"
+    },
+    "user_prompt_injected": {
+      "description": "Interpreter/runner marker set after the selected startup-prompt worker output has been applied. Prevents reinjection after completion/resume or workflow drift while allowing repeated renders of the same uncompleted worker to preserve the prompt.",
+      "type": "boolean"
+    },
+    "user_prompt_target": {
+      "description": "Interpreter-owned selected startup worker step id that receives baton.user_prompt before any worker output exists. Stable across resume and workflow order drift.",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "artifact": {
+      "type": "object",
+      "required": [
+        "id",
+        "content_type",
+        "path"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Artifact id unique within the producer step.",
+          "x-usage": "Use with the producer step id to identify the artifact. Emit a stable id unique within the producer step; do not add producer_step_id, type, kind, ref, version, replaces, or aliases."
+        },
+        "content_type": {
+          "type": "string",
+          "minLength": 1,
+          "description": "MIME/content type, for example text/markdown or application/json.",
+          "x-usage": "Use to render or parse the artifact content. Do not duplicate artifact meaning with type or kind fields."
+        },
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^/",
+          "description": "Full absolute filesystem path to the generated artifact file.",
+          "x-usage": "When producing an artifact file, write it inside the step's artifact output directory and emit the full absolute filesystem path here. Treat this path as the baton/output artifact pointer for later review, approval, or export. Do not rewrite it or use temp dirs, ad-hoc export paths, or paths outside the step artifact output directory."
+        },
+        "summary": {
+          "type": "string",
+          "description": "Optional compact handoff summary for the artifact.",
+          "x-usage": "Use as orientation metadata only; the artifact content remains the source of truth for review or approval."
+        }
+      },
+      "additionalProperties": false
+    },
+    "result": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string"
+        },
+        "cursor": {
+          "type": "string"
+        },
+        "outcome": {
+          "type": "string"
+        },
+        "summary": {
+          "type": "string"
+        },
+        "ref": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true
+    },
+    "aggregateArtifact": {
+      "type": "object",
+      "required": [
+        "producerStepId",
+        "artifact"
+      ],
+      "properties": {
+        "producerStepId": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Producer step id used only for aggregate identity; not part of the artifact metadata contract."
+        },
+        "artifact": {
+          "$ref": "#/$defs/artifact"
+        }
+      },
+      "additionalProperties": false
+    },
+    "recoverableWorkerBlocker": {
+      "type": "object",
+      "required": [
+        "summary",
+        "source_step_id",
+        "needed"
+      ],
+      "properties": {
+        "summary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "source_step_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "needed": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "evidence": {
+          "type": "array",
+          "maxItems": 5,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          }
+        },
+        "risk": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "resolution": {
+          "$ref": "#/$defs/recoveryResolution"
+        }
+      },
+      "additionalProperties": false
+    },
+    "recoveryResolution": {
+      "type": "object",
+      "required": [
+        "summary",
+        "decision"
+      ],
+      "properties": {
+        "summary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "decision": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "evidence": {
+          "type": "array",
+          "maxItems": 5,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          }
+        },
+        "risk": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        }
+      },
+      "additionalProperties": false
+    },
+    "matrixPlan": {
+      "type": "object",
+      "required": [
+        "plan_id",
+        "owner_step_id",
+        "status",
+        "source",
+        "source_fingerprint",
+        "max_parallel",
+        "max_attempts",
+        "current_requests",
+        "units",
+        "accepted_outputs",
+        "blocked",
+        "join_proof"
+      ],
+      "properties": {
+        "plan_id": { "type": "string", "minLength": 1 },
+        "owner_step_id": { "type": "string", "minLength": 1 },
+        "status": { "enum": ["dispatching", "joined", "blocked"] },
+        "source": { "type": "object", "additionalProperties": true },
+        "source_fingerprint": { "type": "string", "minLength": 1 },
+        "max_parallel": { "type": "integer", "minimum": 1, "maximum": 16 },
+        "max_attempts": { "type": "integer", "minimum": 1, "maximum": 10 },
+        "current_requests": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "units": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/matrixUnitRecord" }
+        },
+        "accepted_outputs": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/matrixAcceptedOutputRecord" }
+        },
+        "blocked": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/matrixBlockedRecord" }
+        },
+        "join_proof": {
+          "oneOf": [
+            { "$ref": "#/$defs/matrixJoinProof" },
+            { "type": "null" }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "matrixUnitRecord": {
+      "type": "object",
+      "required": [
+        "unit_id",
+        "request_id",
+        "status",
+        "required",
+        "attempts",
+        "context"
+      ],
+      "properties": {
+        "unit_id": { "type": "string", "minLength": 1 },
+        "request_id": { "type": "string", "minLength": 1 },
+        "status": { "enum": ["pending", "accepted", "blocked"] },
+        "required": { "type": "boolean" },
+        "attempts": { "type": "integer", "minimum": 0 },
+        "max_attempts": { "type": "integer", "minimum": 1 },
+        "context": { "type": "object", "additionalProperties": true },
+        "reason": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
+    "matrixAcceptedOutputRecord": {
+      "type": "object",
+      "required": ["unit_id", "request_id", "status", "output_ref"],
+      "properties": {
+        "unit_id": { "type": "string", "minLength": 1 },
+        "request_id": { "type": "string", "minLength": 1 },
+        "status": { "const": "accepted" },
+        "output_ref": {
+          "type": "object",
+          "required": ["step_id"],
+          "properties": {
+            "step_id": { "type": "string", "minLength": 1 }
+          },
+          "additionalProperties": false
+        },
+        "artifact_ids": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "result_count": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "matrixBlockedRecord": {
+      "type": "object",
+      "required": ["unit_id", "request_id", "reason"],
+      "properties": {
+        "unit_id": { "type": "string", "minLength": 1 },
+        "request_id": { "type": "string", "minLength": 1 },
+        "reason": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
+    "matrixJoinProof": {
+      "type": "object",
+      "required": [
+        "owner_step_id",
+        "plan_id",
+        "required_unit_ids",
+        "optional_unit_ids",
+        "accepted_unit_ids",
+        "blocked_unit_ids",
+        "missing_required_unit_ids",
+        "coverage_complete",
+        "outcome",
+        "reason"
+      ],
+      "properties": {
+        "owner_step_id": { "type": "string", "minLength": 1 },
+        "plan_id": { "type": "string", "minLength": 1 },
+        "required_unit_ids": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "optional_unit_ids": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "accepted_unit_ids": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "blocked_unit_ids": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "missing_required_unit_ids": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "coverage_complete": { "type": "boolean" },
+        "outcome": { "enum": ["pass", "block"] },
+        "reason": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
+    "shardPlan": {
+      "type": "object",
+      "required": [
+        "plan_id",
+        "owner_step_id",
+        "source_evidence",
+        "status",
+        "obligations",
+        "accepted_outputs",
+        "blocked",
+        "join_proof"
+      ],
+      "properties": {
+        "plan_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "owner_step_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source_evidence": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "status": {
+          "enum": [
+            "dispatching",
+            "joined",
+            "blocked"
+          ]
+        },
+        "obligations": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/shardObligationRecord"
+          }
+        },
+        "accepted_outputs": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/shardAcceptedOutputRecord"
+          }
+        },
+        "blocked": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/shardBlockedRecord"
+          }
+        },
+        "join_proof": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/shardJoinProof"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "shardObligationRecord": {
+      "type": "object",
+      "required": [
+        "obligation_id",
+        "shard_id",
+        "reviewer_role",
+        "required",
+        "privacy_route",
+        "max_attempts",
+        "source_evidence",
+        "request_id",
+        "status",
+        "attempts"
+      ],
+      "properties": {
+        "obligation_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "shard_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reviewer_role": {
+          "type": "string",
+          "minLength": 1
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "privacy_route": {
+          "const": "safe_context"
+        },
+        "max_attempts": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "source_evidence": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "request_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "enum": [
+            "pending",
+            "accepted",
+            "blocked"
+          ]
+        },
+        "attempts": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "shardAcceptedOutputRecord": {
+      "type": "object",
+      "required": [
+        "obligation_id",
+        "shard_id",
+        "reviewer_role",
+        "request_id",
+        "status",
+        "output"
+      ],
+      "properties": {
+        "obligation_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "shard_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reviewer_role": {
+          "type": "string",
+          "minLength": 1
+        },
+        "request_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "const": "accepted"
+        },
+        "output": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": false
+    },
+    "shardBlockedRecord": {
+      "type": "object",
+      "required": [
+        "obligation_id",
+        "shard_id",
+        "reviewer_role",
+        "request_id",
+        "reason",
+        "output"
+      ],
+      "properties": {
+        "obligation_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "shard_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reviewer_role": {
+          "type": "string",
+          "minLength": 1
+        },
+        "request_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "output": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": false
+    },
+    "shardJoinProof": {
+      "type": "object",
+      "required": [
+        "owner_step_id",
+        "plan_id",
+        "required_shards",
+        "optional_shards",
+        "accepted_shards",
+        "blocked_shards",
+        "required_obligation_ids",
+        "optional_obligation_ids",
+        "accepted_obligation_ids",
+        "blocked_obligation_ids",
+        "missing_required_obligation_ids",
+        "coverage_complete",
+        "outcome",
+        "reason"
+      ],
+      "properties": {
+        "owner_step_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "plan_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "required_shards": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "optional_shards": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "accepted_shards": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "blocked_shards": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required_obligation_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "optional_obligation_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "accepted_obligation_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "blocked_obligation_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "missing_required_obligation_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "coverage_complete": {
+          "type": "boolean"
+        },
+        "outcome": {
+          "enum": [
+            "pass",
+            "block"
+          ]
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

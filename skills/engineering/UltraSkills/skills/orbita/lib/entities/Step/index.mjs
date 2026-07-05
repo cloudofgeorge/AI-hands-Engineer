@@ -4,6 +4,7 @@
  */
 import { readPath } from './expressions/index.mjs';
 import { invariant } from '../../errors.mjs';
+import { applyLoopPolicyTransition } from '../../runtime/loop-policies.mjs';
 import { applyOutputToBatonState } from '../../runtime/baton-state.mjs';
 import { selectState } from '../../runtime/state-selection.mjs';
 import { statusForStep } from '../../runtime/step-status.mjs';
@@ -148,7 +149,7 @@ function resolveParallelItemsDescriptor({ workflow, baton, stepId, step, output,
 export function resolveTransition({ workflow, baton, stepId, step, output }) {
   const wf = workflowData(workflow);
   requireObject(output, 'worker output');
-  invariant(step.kind !== 'done' && step.kind !== 'blocked', `cursor '${stepId}' is terminal and cannot be applied`);
+  invariant(step.kind !== 'done', `cursor '${stepId}' is terminal and cannot be applied`);
   validateOutputKind(step, output, stepId);
 
   const descriptor = normalizeTransitionNext(step.next);
@@ -199,12 +200,13 @@ export class Step {
 
     const requestStepId = request.stepId ?? request.id;
     invariant(typeof requestStepId === 'string' && requestStepId.length > 0, staleCurrentRequestMessage(stepId, requests));
-    invariant(workflowDoc.steps?.[requestStepId], staleCurrentRequestMessage(stepId, requests));
+    const workflowStepId = request.ownerStepId ?? requestStepId;
+    invariant(workflowDoc.steps?.[workflowStepId], staleCurrentRequestMessage(stepId, requests));
 
-    if (requestStepId === this.id) return { ok: true, stepId: requestStepId };
+    if (workflowStepId === this.id) return { ok: true, stepId: requestStepId };
     if (batonData?.state && Object.hasOwn(batonData.state, this.id) && Object.hasOwn(this.data, 'next')) {
       const resolved = this.resolveConcreteTargets(batonData, workflowDoc, batonData.state[this.id]);
-      if (resolved.targetStepIds?.includes(requestStepId)) return { ok: true, stepId: requestStepId };
+      if (resolved.targetStepIds?.includes(workflowStepId)) return { ok: true, stepId: requestStepId };
     }
 
     throw new Error(staleCurrentRequestMessage(stepId, requests));
@@ -216,12 +218,18 @@ export class Step {
 
   applyOutput({ baton, output, workflow, attempts, storeStepOutput = ['worker', 'approval'].includes(this.data.kind) } = {}) {
     const wf = workflowData(workflow);
-    const transition = this.resolveConcreteTargets(baton, wf, output);
+    const resolvedTransition = this.resolveConcreteTargets(baton, wf, output);
+    const { transition, loopProgress } = applyLoopPolicyTransition({
+      workflow: wf,
+      baton,
+      stepId: this.id,
+      transition: resolvedTransition,
+    });
     const batonData = cloneBoundaryData(baton);
     const outputStepId = storeStepOutput ? this.id : undefined;
     const withOutput = {
       ...batonData,
-      state: applyOutputToBatonState(batonData, output, attempts ?? transition.attempts, outputStepId),
+      state: applyOutputToBatonState(batonData, output, attempts ?? transition.attempts, outputStepId, { loopProgress }),
     };
 
     if (transition.targetStepIds) {
@@ -236,7 +244,6 @@ export class Step {
       status: statusForStep(wf, transition.targetStepId, targetStep),
     };
     delete updatedBaton.blocker;
-    if (updatedBaton.status === 'blocked' && output.blocker) updatedBaton.blocker = output.blocker;
     return { ...transition, targetStep, baton: updatedBaton };
   }
 }

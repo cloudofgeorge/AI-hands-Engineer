@@ -3,7 +3,7 @@
  */
 import { WorkflowRuntimeError } from '../../errors.mjs';
 import { assertCentralArtifactMetadata } from './artifact-contract.mjs';
-import { applyOutputToBatonState } from '../../runtime/baton-state.mjs';
+import { LOOP_PROGRESS_STATE_KEY, applyOutputToBatonState } from '../../runtime/baton-state.mjs';
 import { normalizeCursor } from '../../runtime/cursor.mjs';
 import { statusForStep } from '../../runtime/step-status.mjs';
 
@@ -41,6 +41,19 @@ function validateAggregateArtifacts(state) {
   }
 }
 
+function validateLoopProgress(state) {
+  const progress = state[LOOP_PROGRESS_STATE_KEY];
+  if (progress === undefined) return;
+  if (!progress || typeof progress !== 'object' || Array.isArray(progress)) {
+    throw new WorkflowRuntimeError(`baton semantic validation failed: state.${LOOP_PROGRESS_STATE_KEY} must be an object of counters`);
+  }
+  for (const [policyId, value] of Object.entries(progress)) {
+    if (!Number.isInteger(value) || value < 0) {
+      throw new WorkflowRuntimeError(`baton semantic validation failed: state.${LOOP_PROGRESS_STATE_KEY}.${policyId} must be a non-negative integer counter`);
+    }
+  }
+}
+
 export class Baton {
   constructor(batonData) {
     this.data = cloneBoundaryData(batonData);
@@ -52,29 +65,7 @@ export class Baton {
   }
 
   validateAgainst(workflowInput) {
-    const workflow = workflowData(workflowInput);
-    if (typeof this.data.status !== 'string' || !this.data.state || typeof this.data.state !== 'object' || Array.isArray(this.data.state)) {
-      throw new WorkflowRuntimeError('baton semantic validation failed: baton requires cursor, status, and object state');
-    }
-    validateAggregateArtifacts(this.data.state);
-    const cursorStepIds = normalizeCursor(this.data.cursor);
-    if (cursorStepIds.length > 1 && this.data.status !== 'running') {
-      throw new WorkflowRuntimeError(`baton status '${this.data.status}' is inconsistent with parallel cursor; expected 'running'`);
-    }
-    let expectedStatus = 'running';
-    for (const stepId of cursorStepIds) {
-      const cursorStep = workflow.steps?.[stepId];
-      if (!cursorStep) throw new WorkflowRuntimeError(`baton cursor not found in workflow: ${stepId}`);
-      const stepStatus = statusForStep(workflow, stepId, cursorStep);
-      if (cursorStepIds.length > 1 && stepStatus !== 'running') {
-        throw new WorkflowRuntimeError(`baton parallel cursor cannot include terminal step '${stepId}'`);
-      }
-      if (cursorStepIds.length === 1) expectedStatus = stepStatus;
-    }
-    if (this.data.status !== expectedStatus) {
-      throw new WorkflowRuntimeError(`baton status '${this.data.status}' is inconsistent with cursor '${this.data.cursor}'; expected '${expectedStatus}'`);
-    }
-    return { ok: true };
+    return validateBatonDataAgainstWorkflow(this.data, workflowInput);
   }
 
   currentCursor() {
@@ -102,4 +93,31 @@ export class Baton {
     const state = applyOutputToBatonState(baton, output, attempts, stepId);
     return { ...baton, state };
   }
+}
+
+export function validateBatonDataAgainstWorkflow(batonData, workflowInput) {
+  const workflow = workflowData(workflowInput);
+  if (typeof batonData.status !== 'string' || !batonData.state || typeof batonData.state !== 'object' || Array.isArray(batonData.state)) {
+    throw new WorkflowRuntimeError('baton semantic validation failed: baton requires cursor, status, and object state');
+  }
+  validateAggregateArtifacts(batonData.state);
+  validateLoopProgress(batonData.state);
+  const cursorStepIds = normalizeCursor(batonData.cursor);
+  if (cursorStepIds.length > 1 && batonData.status !== 'running') {
+    throw new WorkflowRuntimeError(`baton status '${batonData.status}' is inconsistent with parallel cursor; expected 'running'`);
+  }
+  let expectedStatus = 'running';
+  for (const stepId of cursorStepIds) {
+    const cursorStep = workflow.steps?.[stepId];
+    if (!cursorStep) throw new WorkflowRuntimeError(`baton cursor not found in workflow: ${stepId}`);
+    const stepStatus = statusForStep(workflow, stepId, cursorStep);
+    if (cursorStepIds.length > 1 && stepStatus !== 'running') {
+      throw new WorkflowRuntimeError(`baton parallel cursor cannot include terminal step '${stepId}'`);
+    }
+    if (cursorStepIds.length === 1) expectedStatus = stepStatus;
+  }
+  if (batonData.status !== expectedStatus) {
+    throw new WorkflowRuntimeError(`baton status '${batonData.status}' is inconsistent with cursor '${batonData.cursor}'; expected '${expectedStatus}'`);
+  }
+  return { ok: true };
 }

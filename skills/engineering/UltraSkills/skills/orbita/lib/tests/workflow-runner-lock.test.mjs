@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import test, { after } from 'node:test';
-import { next as runnerNext } from '../entrypoints/workflow-runner-command.mjs';
+import { afterAll, test } from 'bun:test';
+import { next as runnerNext } from './helpers/orbita-production-api.mjs';
 import { buildTokenLease } from '../persistence/run-state/lease-authority.mjs';
 import { createLockMetadata, removeStaleLock } from '../persistence/run-state/lock-metadata.mjs';
 import { createRunIndexEntry, readRunsIndex, runsIndexPathsForRoot } from '../persistence/run-state/run-index.mjs';
@@ -13,7 +13,7 @@ import { resolveRunPaths } from '../persistence/run-state/paths.mjs';
 const tempDir = mkdtempSync(path.join(tmpdir(), 'workflow-runner-lock-'));
 const runsRoot = path.join(tempDir, '.workflow-runs');
 
-after(() => rmSync(tempDir, { recursive: true, force: true }));
+afterAll(() => rmSync(tempDir, { recursive: true, force: true }));
 
 function writeJson(filePath, value) {
   writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`);
@@ -25,7 +25,6 @@ function workflowDoc() {
     version: 1,
     start: 'prepare',
     done: 'done',
-    blocked: 'blocked',
     steps: {
       prepare: {
         name: 'Prepare',
@@ -35,7 +34,6 @@ function workflowDoc() {
         next: 'done',
       },
       done: { name: 'Done', kind: 'done' },
-      blocked: { name: 'Blocked', kind: 'blocked' },
     },
   };
 }

@@ -4,17 +4,18 @@ import { homedir, tmpdir } from 'node:os';
 import { basename, dirname, isAbsolute, join, normalize, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { defaultRepositoryRootForWorkflow } from '../workflow-resources/resource-resolver.mjs';
+import { readWorkflowDocument } from '../workflow-resources/workflow-document-reader.mjs';
 import { assertManagedRunStateFile, createManagedDirectory } from './atomic-file.mjs';
 import { runsIndexPathsForRoot } from './run-index.mjs';
 
 const runnerDir = dirname(fileURLToPath(import.meta.url));
 export const repositoryRoot = resolve(runnerDir, '../../../../..');
-export const defaultWorkflowPath = join(repositoryRoot, 'workflows/dev-harness/workflow.json');
+export const defaultWorkflowPath = join(repositoryRoot, 'workflows/dev-harness/workflow.toml');
 export const legacyWorkflowRunsRoot = join(repositoryRoot, 'skills/orbita/.workflow-runs');
 export const orbitaHome = resolve(process.env.ORBITA_HOME ?? join(homedir(), '.orbita'));
 export const defaultWorkflowRunsRoot = join(orbitaHome, 'workflow-runs/v1');
 
-const TEST_RUN_ID_RE = /^(workflow-runner-test-|workflow-runner-reuse-hints-|workflow-runner-fairness-|persisted-state-test-|workflow-e2e-|binding-)/;
+const TEST_RUN_ID_RE = /^(workflow-runner-test-|workflow-runner-reuse-hints-|workflow-runner-fairness-|workflow-runner-pointer-|persisted-state-test-|workflow-e2e-|binding-)/;
 
 function isNodeTestRunner() {
   if (typeof process.env.NODE_TEST_CONTEXT !== 'string' || process.env.NODE_TEST_CONTEXT.length === 0) return false;
@@ -58,6 +59,7 @@ function cleanupNewTestRuns(runsRoot, baselineTestRunIds) {
   }
 
   for (const runId of currentTestRunIds) {
+    if (!isCurrentProcessTestRunId(runId)) continue;
     if (baselineTestRunIds.has(runId)) continue;
     rmSync(join(runsRoot, runId), { recursive: true, force: true });
   }
@@ -68,6 +70,7 @@ function cleanupNewTestRuns(runsRoot, baselineTestRunIds) {
     const index = JSON.parse(readFileSync(indexPath, 'utf8'));
     let changed = false;
     for (const runId of Object.keys(index.runs ?? {})) {
+      if (!isCurrentProcessTestRunId(runId)) continue;
       if (!TEST_RUN_ID_RE.test(runId) || baselineTestRunIds.has(runId)) continue;
       delete index.runs[runId];
       changed = true;
@@ -80,6 +83,10 @@ function cleanupNewTestRuns(runsRoot, baselineTestRunIds) {
   } catch (error) {
     console.error(`workflow runs test cleanup failed for ${indexPath}: ${error.message}`);
   }
+}
+
+function isCurrentProcessTestRunId(runId) {
+  return new RegExp(`^(?:workflow-runner-test|workflow-runner-reuse-hints|workflow-runner-fairness|workflow-runner-pointer|persisted-state-test|workflow-e2e|binding)-${process.pid}(?:-|$)`).test(runId);
 }
 
 function configureWorkflowRunsRoot() {
@@ -220,7 +227,7 @@ export async function ensureRunFiles(paths, { userPrompt, userPromptTarget } = {
   const batonExists = await exists(paths.batonPath);
   if (batonExists) await assertManagedRunStateFile(paths.batonPath, 'workflow baton');
   if (!batonExists) {
-    const workflowDoc = await readJson(paths.workflowPath, 'workflow');
+    const workflowDoc = readWorkflowDocument(paths.workflowPath, 'workflow');
     const start = workflowStart(workflowDoc, paths.workflowPath);
     const initialBaton = { cursor: start, status: 'running', state: { artifacts: [], results: [] } };
     if (typeof userPrompt === 'string') {

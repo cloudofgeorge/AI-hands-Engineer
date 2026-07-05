@@ -2,18 +2,19 @@ import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import test, { after } from 'node:test';
+import { afterAll, test } from 'bun:test';
 import { fileURLToPath } from 'node:url';
-import researchCriticWorkflowDoc from '../../../../workflows/research-critic/workflow.json' with { type: 'json' };
 import { Workflow } from '../entities/Workflow/index.mjs';
-import { loadInstructions as runnerLoadInstructions, next as runnerNext } from '../entrypoints/workflow-runner-command.mjs';
-import { validateWorkflowFile } from '../entrypoints/api/validateWorkflow.mjs';
-import { workflowSemanticValidationOptions } from '../use-cases/workflow-semantic-validation.mjs';
-import { readAllowedRoles, readOutputSchemas } from '../persistence/workflow-resources/workflow-file-reader.mjs';
+import { loadInstructions as runnerLoadInstructions, next as runnerNext } from './helpers/orbita-production-api.mjs';
+import { validateWorkflowFile } from './helpers/orbita-production-api.mjs';
+import { workflowSemanticValidationOptions } from '../runtime/workflow-semantic-validation.mjs';
+import { read, readAllowedRoles, readOutputSchemas } from '../persistence/workflow-resources/workflow-file-reader.mjs';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../..');
+const RESEARCH_CRITIC_WORKFLOW_PATH = path.join(REPO_ROOT, 'workflows/research-critic/workflow.toml');
+const researchCriticWorkflowDoc = read(RESEARCH_CRITIC_WORKFLOW_PATH).toJSON();
 const tempDir = mkdtempSync(path.join(tmpdir(), 'workflow-validation-parity-'));
-after(() => rmSync(tempDir, { recursive: true, force: true }));
+afterAll(() => rmSync(tempDir, { recursive: true, force: true }));
 
 function writeJson(filePath, value) {
   mkdirSync(path.dirname(filePath), { recursive: true });
@@ -26,7 +27,6 @@ function parityWorkflowDoc(schemaRef) {
     version: 1,
     start: 'prepare',
     done: 'done',
-    blocked: 'blocked',
     steps: {
       prepare: {
         name: 'Prepare',
@@ -36,13 +36,12 @@ function parityWorkflowDoc(schemaRef) {
         next: 'done',
       },
       done: { name: 'Done', kind: 'done' },
-      blocked: { name: 'Blocked', kind: 'blocked' },
     },
   };
 }
 
 test('validate-workflow, direct Workflow validation, Workflow.validateOutputSchemas, and workflow-runner share baton $ref semantic-validation parity', async () => {
-  const workflowPath = path.join(REPO_ROOT, 'workflows/research-critic/workflow.json');
+  const workflowPath = RESEARCH_CRITIC_WORKFLOW_PATH;
   const outputSchemas = readOutputSchemas({ workflow: researchCriticWorkflowDoc, workflowPath, repositoryRoot: REPO_ROOT });
   const allowedRoles = readAllowedRoles({ repositoryRoot: REPO_ROOT });
   const validationOptions = workflowSemanticValidationOptions({ outputSchemas, allowedRoles });
@@ -124,10 +123,40 @@ test('validate-workflow and workflow-runner reject unresolved external refs with
   );
 });
 
+test('repo-shaped workflow roots named workflows keep repository boundary compatibility', async () => {
+  const packageRoot = path.join(tempDir, 'custom-root-basename-case', 'workflows', 'custom-flow');
+  const workflowPath = path.join(packageRoot, 'workflow.json');
+  const siblingSchema = path.join(tempDir, 'custom-root-basename-case', 'workflows', 'shared.schema.json');
+  mkdirSync(packageRoot, { recursive: true });
+  writeFileSync(path.join(packageRoot, 'output.md'), 'Return strict JSON.\n');
+  writeJson(siblingSchema, {
+    $schema: 'https://json-schema.org/draft/2020-12/schema',
+    type: 'object',
+    required: ['outcome'],
+    properties: { outcome: { enum: ['ok'] } },
+    additionalProperties: false,
+  });
+  writeJson(workflowPath, parityWorkflowDoc('../shared.schema.json'));
+
+  assert.deepEqual(validateWorkflowFile(workflowPath), {
+    ok: true,
+    workflow: 'workflow-validation-parity-fixture',
+    steps: 2,
+  });
+
+  const runId = `workflow-validation-parity-${process.pid}-basename-root`;
+  const runsRoot = path.join(tempDir, 'basename-root-runs');
+  const leaseToken = `workflow-validation-parity-basename-root-token-${process.pid}`;
+
+  const response = await runnerNext({ runId, workflowPath, runsRoot, leaseToken });
+  assert.equal(response.status, 'needs_host_actions');
+  assert.equal(response.requests[0].stepId, 'prepare');
+});
+
 test('workflow validation boundaries keep baton schema composition and Step entity materialization outside Workflow owner', () => {
   const adapterPaths = [
     'skills/orbita/lib/use-cases/ValidateWorkflow.mjs',
-    'skills/orbita/lib/use-cases/runtime/guards/workflow.mjs',
+    'skills/orbita/lib/runtime/guards/workflow.mjs',
     'skills/orbita/lib/use-cases/LoadInstructions.mjs',
   ];
   const workflowOwnerPaths = readdirSync(path.join(REPO_ROOT, 'skills/orbita/lib/entities/Workflow'))
@@ -136,12 +165,12 @@ test('workflow validation boundaries keep baton schema composition and Step enti
 
   for (const relativePath of adapterPaths) {
     const source = readFileSync(path.join(REPO_ROOT, relativePath), 'utf8');
-    assert.doesNotMatch(source, /baton-schema\.mjs/);
+    assert.doesNotMatch(source, /file-contracts\/baton\/baton-schema\.mjs/);
   }
 
   for (const relativePath of workflowOwnerPaths) {
     const source = readFileSync(path.join(REPO_ROOT, relativePath), 'utf8');
-    assert.doesNotMatch(source, /Baton\/schema\/baton-schema\.mjs/);
+    assert.doesNotMatch(source, /file-contracts\/baton\/baton-schema\.mjs/);
   }
 
   const workflowIndex = readFileSync(path.join(REPO_ROOT, 'skills/orbita/lib/entities/Workflow/index.mjs'), 'utf8');

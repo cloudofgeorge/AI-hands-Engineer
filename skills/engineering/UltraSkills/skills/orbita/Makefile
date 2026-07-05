@@ -2,7 +2,7 @@
 
 TEST_FILES := $(shell find lib/tests lib/entities lib/use-cases -name '*.test.mjs' -type f ! -path 'lib/tests/E2E/*' | sort)
 WORKFLOW_E2E_TEST_FILES := lib/tests/E2E/*.test.mjs
-TEST_NODE := node --import ./lib/tests/setup-workflow-runs-root.mjs
+TEST_BUN := AGENT=1 bun test --timeout=30000
 DEFAULT_WORKFLOW_RUNS_ROOT := $(HOME)/.orbita/workflow-runs/v1
 
 # Cheap guard: tests must not leak workflow run artifacts into repository paths.
@@ -15,6 +15,7 @@ check-workflow-run-leaks:
 		-name 'workflow-runner-test-*' -o \
 		-name 'workflow-runner-reuse-hints-*' -o \
 		-name 'workflow-runner-fairness-*' -o \
+		-name 'workflow-runner-pointer-*' -o \
 		-name 'persisted-state-test-*' -o \
 		-name 'workflow-e2e-*' -o \
 		-name 'binding-*' \
@@ -25,18 +26,18 @@ check-workflow-run-leaks:
 	fi
 
 test:
-	@$(TEST_NODE) --test $(TEST_FILES); \
+	@$(TEST_BUN) $(TEST_FILES); \
 	status=$$?; \
 	$(MAKE) --no-print-directory check-workflow-run-leaks || status=$$?; \
 	exit $$status
 
 test-workflow-e2e:
-	@$(TEST_NODE) --test $(WORKFLOW_E2E_TEST_FILES); \
+	@$(TEST_BUN) $(WORKFLOW_E2E_TEST_FILES); \
 	status=$$?; \
 	$(MAKE) --no-print-directory check-workflow-run-leaks || status=$$?; \
 	exit $$status
 
 workflow-validate:
-	node ./lib/entrypoints/cli/validate-workflow.mjs ../../workflows/*/workflow.json
+	bun ./lib/entrypoints/cli/validate-workflow.mjs ../../workflows
 
 validate: test workflow-validate

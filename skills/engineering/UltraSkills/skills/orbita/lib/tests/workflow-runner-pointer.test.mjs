@@ -1,10 +1,9 @@
 // Exercises the public pointer-recovery control plane without touching dashboard internals.
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import test, { after } from 'node:test';
+import { afterAll, test } from 'bun:test';
 import { fileURLToPath } from 'node:url';
 import {
   bindAgent,
@@ -13,7 +12,7 @@ import {
   movePointer,
   next,
   writeOutput,
-} from '../entrypoints/workflow-runner-command.mjs';
+} from './helpers/orbita-production-api.mjs';
 import { registerWorkflowRunAtRoot } from '../persistence/run-state/workflow-runs.mjs';
 import { resolveRunPaths } from '../persistence/run-state/paths.mjs';
 
@@ -26,7 +25,6 @@ const workflowDoc = {
   version: 1,
   start: 'prepare',
   done: 'done',
-  blocked: 'blocked',
   steps: {
     prepare: {
       name: 'Prepare',
@@ -50,11 +48,10 @@ const workflowDoc = {
       next: 'done',
     },
     done: { name: 'Done', kind: 'done', input: { prompt: 'Finished.' } },
-    blocked: { name: 'Blocked', kind: 'blocked', input: { prompt: 'Blocked.' } },
   },
 };
 
-after(() => rmSync(tempDir, { recursive: true, force: true }));
+afterAll(() => rmSync(tempDir, { recursive: true, force: true }));
 
 function writeJson(filePath, value) {
   writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`);
@@ -116,10 +113,11 @@ function snapshot(paths) {
 }
 
 function rawRunFiles(paths) {
+  const index = JSON.parse(readFileSync(paths.runsIndexPath, 'utf8'));
   return {
     baton: existsSync(paths.batonPath) ? readFileSync(paths.batonPath, 'utf8') : undefined,
     history: existsSync(paths.historyPath) ? readFileSync(paths.historyPath, 'utf8') : undefined,
-    index: readFileSync(paths.runsIndexPath, 'utf8'),
+    indexEntry: index.runs[paths.runId],
   };
 }
 
@@ -129,9 +127,6 @@ test('runner pointer API lists adjacent transitions and moves pointer with retai
   await bindAgent({ ...run, stepId: 'prepare', agentId: 'agent-prepare', now: new Date('2026-06-01T10:00:02.000Z') });
   await acceptCurrentWorkerOutput({ ...run, stepId: 'prepare', summary: 'prepared' });
   await continueRun({ ...run, now: new Date('2026-06-01T10:02:00.000Z') });
-  const batonWithStaleBlocker = JSON.parse(readFileSync(run.paths.batonPath, 'utf8'));
-  batonWithStaleBlocker.blocker = { summary: 'preserve non-pointer baton field' };
-  writeJson(run.paths.batonPath, batonWithStaleBlocker);
   const beforeMove = snapshot(run.paths);
 
   const listed = await listPointerTransitions({ ...run, now: new Date('2026-06-01T10:03:00.000Z') });
@@ -159,7 +154,6 @@ test('runner pointer API lists adjacent transitions and moves pointer with retai
   assert.equal(afterMove.baton.status, 'running');
   assert.deepEqual(afterMove.baton.state, beforeMove.baton.state);
   assert.deepEqual(afterMove.baton.workerBindings, beforeMove.baton.workerBindings);
-  assert.deepEqual(afterMove.baton.blocker, beforeMove.baton.blocker);
   assert.equal(afterMove.baton.user_prompt_injected, beforeMove.baton.user_prompt_injected);
   assert.equal(afterMove.history.startsWith(beforeMove.history), true);
   assert.match(afterMove.history.slice(beforeMove.history.length), /source: workflow-runner-move-pointer/);
@@ -305,70 +299,6 @@ test('runner pointer API reports terminal and parallel cursors as unsupported', 
   assert.deepEqual(parallel.transitions, []);
 });
 
-test('runner pointer CLI matches API behavior and validates mode-specific arguments', async () => {
-  const run = await createClaimedRun('cli');
-  const now = new Date();
-  await next({ ...run, now });
-  await acceptCurrentWorkerOutput({ ...run, stepId: 'prepare', summary: 'prepared cli', now });
-  await continueRun({ ...run, now });
-
-  const kebabList = spawnSync(process.execPath, [
-    'skills/orbita/lib/entrypoints/cli/workflow-runner.mjs',
-    'list-pointer-transitions',
-    '--run-id', run.runId,
-    '--workflow', run.workflowPath,
-    '--lease-token', run.leaseToken,
-  ], { cwd: root, encoding: 'utf8' });
-  assert.equal(kebabList.status, 0, kebabList.stderr);
-
-  const listed = JSON.parse(kebabList.stdout);
-  assert.equal(listed.transitions[0].to.cursor, 'prepare');
-
-  const camelList = spawnSync(process.execPath, [
-    'skills/orbita/lib/entrypoints/cli/workflow-runner.mjs',
-    'listPointerTransitions',
-    '--run-id', run.runId,
-    '--workflow', run.workflowPath,
-    '--lease-token', run.leaseToken,
-  ], { cwd: root, encoding: 'utf8' });
-  assert.notEqual(camelList.status, 0);
-  assert.match(camelList.stderr, /usage:/);
-
-  const invalidList = spawnSync(process.execPath, [
-    'skills/orbita/lib/entrypoints/cli/workflow-runner.mjs',
-    'list-pointer-transitions',
-    '--run-id', run.runId,
-    '--workflow', run.workflowPath,
-    '--lease-token', run.leaseToken,
-    '--transition-id', listed.transitions[0].id,
-  ], { cwd: root, encoding: 'utf8' });
-  assert.notEqual(invalidList.status, 0);
-  assert.match(invalidList.stderr, /usage:/);
-
-  const move = spawnSync(process.execPath, [
-    'skills/orbita/lib/entrypoints/cli/workflow-runner.mjs',
-    'move-pointer',
-    '--run-id', run.runId,
-    '--workflow', run.workflowPath,
-    '--lease-token', run.leaseToken,
-    '--transition-id', listed.transitions[0].id,
-    '--acknowledge-retained-state',
-  ], { cwd: root, encoding: 'utf8' });
-  assert.equal(move.status, 0, move.stderr);
-  assert.equal(JSON.parse(move.stdout).current.cursor, 'prepare');
-
-  const targetAliasMove = spawnSync(process.execPath, [
-    'skills/orbita/lib/entrypoints/cli/workflow-runner.mjs',
-    'move-pointer',
-    '--run-id', run.runId,
-    '--workflow', run.workflowPath,
-    '--lease-token', run.leaseToken,
-    '--target-position-id', listed.transitions[0].id,
-    '--acknowledge-retained-state',
-  ], { cwd: root, encoding: 'utf8' });
-  assert.notEqual(targetAliasMove.status, 0);
-  assert.match(targetAliasMove.stderr, /usage:/);
-});
 
 test('dashboard boundary stays read-only and does not import pointer recovery commands', () => {
   const dashboardFiles = [

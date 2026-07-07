@@ -32,6 +32,7 @@ Model- or user-reachable; descriptions are trigger-oriented so an agent can rout
 ### Planning and architecture
 
 - [brainstorming](./brainstorming/SKILL.md) — Use before creative work that creates features, components, functionality, or behavior; clarifies intent and design before implementation.
+- [writing-plans](./writing-plans/SKILL.md) — Use when a spec or requirements are ready and a multi-step implementation plan is needed before touching code.
 - [find-ideas](./find-ideas/SKILL.md) — Use when the user wants to find what to work on next in an existing project, audit progress, brainstorm a backlog, surface bugs and tech debt, or generate a prioritized list of ideas.
 - [grill-with-docs](./grill-with-docs/SKILL.md) — Grilling session that challenges your plan against the existing domain model, sharpens terminology, and updates documentation as decisions crystallise.
 - [domain-modeling](./domain-modeling/SKILL.md) — Build and sharpen a project's domain model.

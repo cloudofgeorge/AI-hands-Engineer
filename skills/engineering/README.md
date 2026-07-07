@@ -11,8 +11,10 @@ This README is a routing index for agents. Keep it short; detailed procedures be
 - Start with the narrowest domain skill that matches the request: security, macOS, CI, deployment, web, or mobile work before broad engineering skills.
 - Use `diagnose`/`diagnosing-bugs` for root-cause work; use `tdd` once the target behavior is understood and ready to implement.
 - Use `to-prd` → `to-issues` → `implement` for explicit planning-to-execution flows.
+- Use the Superpowers skills when you need strict process-gated workflows for skill selection, TDD, systematic debugging, subagent execution, worktree isolation, review, and verification.
 - Use the [UltraSkills bundle](./UltraSkills/README.md) for staged research → architecture → execution-plan → implementation flows, multi-role code review, workflow-runner orchestration, or repo-role hats.
 - UltraSkills includes imported skills whose `name` overlaps existing skills (`forthright`, `grill-me`, `improve-codebase-architecture`); use the linked path here when you need the UltraSkills version.
+- Superpowers includes a skill whose `name` overlaps an existing skill (`writing-plans`); use the linked path here when you need the Superpowers version.
 
 ## User-invoked
 
@@ -31,7 +33,6 @@ Model- or user-reachable; descriptions are trigger-oriented so an agent can rout
 
 ### Planning and architecture
 
-- [brainstorming](./brainstorming/SKILL.md) — Use before creative work that creates features, components, functionality, or behavior; clarifies intent and design before implementation.
 - [writing-plans](./writing-plans/SKILL.md) — Use when a spec or requirements are ready and a multi-step implementation plan is needed before touching code.
 - [find-ideas](./find-ideas/SKILL.md) — Use when the user wants to find what to work on next in an existing project, audit progress, brainstorm a backlog, surface bugs and tech debt, or generate a prioritized list of ideas.
 - [grill-with-docs](./grill-with-docs/SKILL.md) — Grilling session that challenges your plan against the existing domain model, sharpens terminology, and updates documentation as decisions crystallise.
@@ -44,6 +45,23 @@ Model- or user-reachable; descriptions are trigger-oriented so an agent can rout
 - [diagnosing-bugs](./diagnosing-bugs/SKILL.md) — Diagnosis loop for hard bugs and performance regressions.
 - [tdd](./tdd/SKILL.md) — Test-driven development. Use when the user wants to build features or fix bugs test-first, mentions "red-green-refactor", or wants integration tests.
 - [resolving-merge-conflicts](./resolving-merge-conflicts/SKILL.md) — Use when you need to resolve an in-progress git merge/rebase conflict.
+
+### Superpowers workflow skills
+
+- [using-superpowers](./superpowers/using-superpowers/SKILL.md) — Use at conversation start to enforce skill-first routing and load the relevant Superpowers workflow before any response.
+- [brainstorming](./superpowers/brainstorming/SKILL.md) — Use before creative work that creates features, components, functionality, or behavior and needs design approval before implementation.
+- [writing-plans](./superpowers/writing-plans/SKILL.md) — Use when requirements are ready and a multi-step implementation plan must be written before touching code.
+- [test-driven-development](./superpowers/test-driven-development/SKILL.md) — Use before implementing a feature, bug fix, refactor, or behavior change that needs test-first development.
+- [systematic-debugging](./superpowers/systematic-debugging/SKILL.md) — Use for bugs, test failures, build failures, performance problems, or unexpected behavior before proposing fixes.
+- [verification-before-completion](./superpowers/verification-before-completion/SKILL.md) — Use before claiming work is complete, fixed, passing, committed, or PR-ready so verification evidence is fresh.
+- [using-git-worktrees](./superpowers/using-git-worktrees/SKILL.md) — Use when feature work or implementation-plan execution needs an isolated workspace.
+- [dispatching-parallel-agents](./superpowers/dispatching-parallel-agents/SKILL.md) — Use for two or more independent tasks or failures that can be investigated or implemented in parallel.
+- [subagent-driven-development](./superpowers/subagent-driven-development/SKILL.md) — Use when executing an implementation plan with independent tasks in the current session.
+- [executing-plans](./superpowers/executing-plans/SKILL.md) — Use when executing a written implementation plan in a separate session with review checkpoints.
+- [requesting-code-review](./superpowers/requesting-code-review/SKILL.md) — Use after completing tasks, major features, or pre-merge work that needs requirement and quality review.
+- [receiving-code-review](./superpowers/receiving-code-review/SKILL.md) — Use before acting on review feedback so suggestions are understood, verified, and applied one item at a time.
+- [finishing-a-development-branch](./superpowers/finishing-a-development-branch/SKILL.md) — Use after implementation and tests pass to choose merge, PR, cleanup, or branch-completion flow.
+- [writing-skills](./superpowers/writing-skills/SKILL.md) — Use when creating, editing, or verifying skills before deployment.
 
 ### Optimization and simplification
 

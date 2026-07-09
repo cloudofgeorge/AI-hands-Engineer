@@ -1,6 +1,6 @@
 # Engineering
 
-Code-work skills for planning, debugging, architecture, delivery, platform domains, and engineering review.
+Code-work skills for research, planning, debugging, architecture, delivery, platform domains, and engineering review.
 
 This README is a routing index for agents. Keep it short; detailed procedures belong in each linked `SKILL.md`.
 
@@ -10,9 +10,11 @@ This README is a routing index for agents. Keep it short; detailed procedures be
 - Load additional skills only when their workflow is needed, not just because the topic is adjacent.
 - Start with the narrowest domain skill that matches the request: security, macOS, CI, deployment, web, or mobile work before broad engineering skills.
 - Use `diagnose`/`diagnosing-bugs` for root-cause work; use `tdd` once the target behavior is understood and ready to implement.
-- Use `to-prd` → `to-issues` → `implement` for explicit planning-to-execution flows.
+- Use `to-spec`/`to-prd` → `to-tickets`/`to-issues` → `implement` for explicit planning-to-execution flows.
+- Use `wayfinder` for efforts too large or foggy for one session, then resolve the map one ticket at a time.
+- Use `code-review` for two-axis Standards/Spec review of a branch, PR, WIP diff, or “review since X” request.
 - Use the Superpowers skills when you need strict process-gated workflows for skill selection, TDD, systematic debugging, subagent execution, worktree isolation, review, and verification.
-- Use the [UltraSkills bundle](./UltraSkills/README.md) for staged research → architecture → execution-plan → implementation flows, multi-role code review, workflow-runner orchestration, or repo-role hats.
+- Use the [UltraSkills bundle](./UltraSkills/skills/) for staged research → architecture → execution-plan → implementation flows, multi-role code review, workflow-runner orchestration, or repo-role hats.
 - UltraSkills includes imported skills whose `name` overlaps existing skills (`forthright`, `grill-me`, `improve-codebase-architecture`); use the linked path here when you need the UltraSkills version.
 - Superpowers includes a skill whose `name` overlaps an existing skill (`writing-plans`); use the linked path here when you need the Superpowers version.
 
@@ -21,11 +23,14 @@ This README is a routing index for agents. Keep it short; detailed procedures be
 Reachable only when you type them (`disable-model-invocation: true`).
 
 - [implement](./implement/SKILL.md) — Implement a piece of work based on a PRD or set of issues.
+- [grill-with-docs](./grill-with-docs/SKILL.md) — Challenge a plan or design while creating ADR and glossary documentation as decisions crystallise.
 - [improve-codebase-architecture](./improve-codebase-architecture/SKILL.md) — Scan a codebase for deepening opportunities, present them as a visual HTML report, then grill through whichever one you pick.
-- [prototype](./prototype/SKILL.md) — Build a throwaway prototype to flesh out a design — a runnable terminal app for state/business-logic questions, or several radically different UI variations toggleable from one route.
 - [to-issues](./to-issues/SKILL.md) — Break a plan, spec, or PRD into independently-grabbable issues on the project issue tracker using tracer-bullet vertical slices.
 - [to-prd](./to-prd/SKILL.md) — Turn the current conversation into a PRD and publish it to the project issue tracker — no interview, just synthesis of what you've already discussed.
+- [to-spec](./to-spec/SKILL.md) — Turn the current conversation into a spec and publish it to the project issue tracker without interviewing for new scope.
+- [to-tickets](./to-tickets/SKILL.md) — Break a plan, spec, or conversation into tracer-bullet tickets with explicit blocking edges on the configured tracker.
 - [triage](./triage/SKILL.md) — Move issues and external PRs through a state machine of triage roles — categorise, verify, grill if needed, and write agent-ready briefs.
+- [wayfinder](./wayfinder/SKILL.md) — Map a huge, foggy effort into investigation tickets on the issue tracker and work the frontier one ticket at a time.
 
 ## Model-invoked
 
@@ -35,15 +40,17 @@ Model- or user-reachable; descriptions are trigger-oriented so an agent can rout
 
 - [writing-plans](./writing-plans/SKILL.md) — Use when a spec or requirements are ready and a multi-step implementation plan is needed before touching code.
 - [find-ideas](./find-ideas/SKILL.md) — Use when the user wants to find what to work on next in an existing project, audit progress, brainstorm a backlog, surface bugs and tech debt, or generate a prioritized list of ideas.
-- [grill-with-docs](./grill-with-docs/SKILL.md) — Grilling session that challenges your plan against the existing domain model, sharpens terminology, and updates documentation as decisions crystallise.
 - [domain-modeling](./domain-modeling/SKILL.md) — Build and sharpen a project's domain model.
 - [codebase-design](./codebase-design/SKILL.md) — Shared vocabulary for designing deep modules.
+- [research](./research/SKILL.md) — Delegate high-trust primary-source investigation and capture cited findings as Markdown in the repo.
 
 ### Debugging, testing, and code flow
 
 - [diagnose](./diagnose/SKILL.md) — Disciplined diagnosis loop for hard bugs and performance regressions.
 - [diagnosing-bugs](./diagnosing-bugs/SKILL.md) — Diagnosis loop for hard bugs and performance regressions.
 - [tdd](./tdd/SKILL.md) — Test-driven development. Use when the user wants to build features or fix bugs test-first, mentions "red-green-refactor", or wants integration tests.
+- [prototype](./prototype/SKILL.md) — Build a throwaway prototype to answer a design question before committing to a product or implementation direction.
+- [code-review](./code-review/SKILL.md) — Review changes since a fixed point in parallel Standards and Spec axes, then report the findings side by side.
 - [resolving-merge-conflicts](./resolving-merge-conflicts/SKILL.md) — Use when you need to resolve an in-progress git merge/rebase conflict.
 
 ### Superpowers workflow skills
@@ -109,18 +116,18 @@ Model- or user-reachable; descriptions are trigger-oriented so an agent can rout
 
 - [research-critic](./UltraSkills/skills/research-critic/SKILL.md) — Produce a reusable pre-implementation research artifact by having a researcher create a canvas and a second reviewer attack the assumptions.
 - [create-architecture](./UltraSkills/skills/create-architecture/SKILL.md) — Create, improve, align, or audit an architecture decision package, including `ARCHITECTURE.md`, C4/DDD artifacts, migration slices, and colocated context rules.
-- [dev-harness](./UltraSkills/skills/dev-harness/SKILL.md) — Orchestrate execution planning and delegation after approved research or architecture context exists.
 - [implementation-harness](./UltraSkills/skills/implementation-harness/SKILL.md) — Execute the approved development stage against closed research and execution-plan contracts without reopening broad discovery.
 - [code-review-orchestrator](./UltraSkills/skills/code-review-orchestrator/SKILL.md) — Fan out code review across specialist roles and merge must-fix, should-fix, and can-delay findings into a pass/fail verdict.
 - [loop](./UltraSkills/skills/loop/SKILL.md) — Run repeated task cycles with explicit state, worker handoff, progress reporting, and safe stop conditions.
 - [orbita](./UltraSkills/skills/orbita/SKILL.md) — Drive workflow-runner host-adapter jobs, follow runner stdout, handle host actions, and continue/resume workflow runs.
 
-### UltraSkills docs, design, and skill authoring
+### UltraSkills docs, design, knowledge, and skill authoring
 
 - [create-design](./UltraSkills/skills/create-design/SKILL.md) — Create, rewrite, review, or restructure a project's design-memory system and operational design artifacts.
 - [create-skill](./UltraSkills/skills/create-skill/SKILL.md) — Create, rewrite, audit, or restructure a Claude/OpenClaw-style skill folder from source material, prompts, SOPs, notes, or an existing skill.
 - [docs-writer](./UltraSkills/skills/docs-writer/SKILL.md) — Write or rewrite usage, setup, onboarding, migration, API, and reference documentation so readers succeed quickly.
 - [devrel-copywriter](./UltraSkills/skills/devrel-copywriter/SKILL.md) — Shape repository README framing and opening structure when the README is a product-facing entrypoint.
+- [obsidian](./UltraSkills/skills/obsidian/SKILL.md) — Work with Obsidian vaults as plain Markdown and automate note search, creation, moves, and deletes through obsidian-cli.
 - [improve-codebase-architecture](./UltraSkills/skills/improve-codebase-architecture/SKILL.md) — Legacy donor/reference skill for module, interface, seam, and depth thinking; prefer UltraSkills `create-architecture` for active architecture work.
 
 ### UltraSkills communication and role lenses

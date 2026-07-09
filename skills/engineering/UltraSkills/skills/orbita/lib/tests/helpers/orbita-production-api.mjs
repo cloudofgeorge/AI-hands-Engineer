@@ -1,4 +1,4 @@
-import { readFile } from 'node:fs/promises';
+import { readFile, stat } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { applyWorkflowOutput } from '../../use-cases/ApplyWorkflowOutput.mjs';
 import { validateRunnerAcceptedOutput } from '../../use-cases/WorkflowRunnerOutputValidation.mjs';
@@ -24,7 +24,7 @@ import { readPersistedRunState } from '../../persistence/run-state/PersistedRunS
 import { defaultWorkflowPath, ensureRunFiles, migrateLegacyWorkflowRunsRootIfNeeded, pathExists, resolveRunPaths } from '../../persistence/run-state/paths.mjs';
 import { createRunIndexEntry, readRunsIndex, runsIndexPathsForRoot, upsertRunIndexEntry } from '../../persistence/run-state/run-index.mjs';
 import { withRunStateLock } from '../../persistence/run-state/lock.mjs';
-import { claimWorkflowRunAtRoot, heartbeatWorkflowRunAtRoot, listWorkflowRunsAtRoot, registerWorkflowRunAtRoot, summarizeWorkflowRuns as summarizeWorkflowRunsAtRoot } from '../../persistence/run-state/workflow-runs.mjs';
+import { claimWorkflowRunAtRoot, deleteWorkflowRunAtRoot, heartbeatWorkflowRunAtRoot, listWorkflowRunsAtRoot, registerWorkflowRunAtRoot, summarizeWorkflowRuns as summarizeWorkflowRunsAtRoot } from '../../persistence/run-state/workflow-runs.mjs';
 import { publicErrorMessage } from '../../public-error.mjs';
 import { assertAbsoluteWorkflowPath, resolveAbsoluteWorkflowPath } from '../../workflow-path-boundary.mjs';
 import { isRecoverableWorkerBlockerOutput, publicRecoverableBlockerDetails, publicRecoveryResolutionDetails } from '../../runtime/recoverable-worker-blocker.mjs';
@@ -48,6 +48,7 @@ const validateWorkflowStartup = createWorkflowStartupValidator({
 
 const workflowRunnerCommand = createWorkflowRunnerCommand({
   readFile,
+  stat,
   join,
   resolve,
   applyWorkflowOutput,
@@ -99,6 +100,7 @@ const workflowRunnerCommand = createWorkflowRunnerCommand({
 
 const workflowRuns = createWorkflowRuns({
   claimWorkflowRunAtRoot,
+  deleteWorkflowRunAtRoot,
   heartbeatWorkflowRunAtRoot,
   listWorkflowRunsAtRoot,
   registerWorkflowRunAtRoot,
@@ -110,18 +112,17 @@ const workflowRuns = createWorkflowRuns({
 });
 
 export const {
-  bindAgent,
   continueRun,
   listPointerTransitions,
   loadInstructions,
   movePointer,
   next,
-  recordOrchestrator,
   writeOutput,
 } = workflowRunnerCommand;
 
 export const {
   claimWorkflowRun,
+  deleteWorkflowRun,
   heartbeatWorkflowRun,
   listWorkflowRuns,
   registerWorkflowRun,

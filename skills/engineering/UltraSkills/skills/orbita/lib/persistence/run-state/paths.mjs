@@ -1,6 +1,6 @@
-import { constants, existsSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { constants, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmdirSync, rmSync, writeFileSync } from 'node:fs';
 import { access, cp, mkdir, open, readdir, rename, rm, writeFile } from 'node:fs/promises';
-import { homedir, tmpdir } from 'node:os';
+import { homedir } from 'node:os';
 import { basename, dirname, isAbsolute, join, normalize, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { defaultRepositoryRootForWorkflow } from '../workflow-resources/resource-resolver.mjs';
@@ -92,9 +92,18 @@ function isCurrentProcessTestRunId(runId) {
 function configureWorkflowRunsRoot() {
   if (!isNodeTestRunner()) return process.env.WORKFLOW_RUNS_ROOT ?? defaultWorkflowRunsRoot;
   if (!process.env.WORKFLOW_RUNS_ROOT) {
-    const testRunsRoot = mkdtempSync(join(tmpdir(), 'orbita-test-workflow-runs-'));
+    const testRunsBaseRoot = join(repositoryRoot, '.testruns');
+    const testRunsRoot = join(testRunsBaseRoot, `orbita-workflow-runs-${process.pid}-${Date.now()}`);
+    mkdirSync(testRunsRoot, { recursive: true });
     process.env.WORKFLOW_RUNS_ROOT = testRunsRoot;
-    process.once('exit', () => rmSync(testRunsRoot, { recursive: true, force: true }));
+    process.once('exit', () => {
+      rmSync(testRunsRoot, { recursive: true, force: true });
+      try {
+        rmdirSync(testRunsBaseRoot);
+      } catch (error) {
+        if (!['ENOENT', 'ENOTEMPTY', 'EEXIST'].includes(error?.code)) throw error;
+      }
+    });
     return testRunsRoot;
   }
 
@@ -143,6 +152,7 @@ export function resolveRunPaths({ runId, workflowPath, runsRoot = workflowRunsRo
     instructionsDir: join(resolvedRunDir, '.workflow-runner', 'instructions'),
     continueLockPath: join(resolvedRunDir, '.workflow-runner', 'continue.lock'),
     durableCommitPath: join(resolvedRunDir, '.workflow-runner', 'durable-commit.json'),
+    currentRequestsPath: join(resolvedRunDir, '.workflow-runner', 'current-requests.json'),
   };
 }
 

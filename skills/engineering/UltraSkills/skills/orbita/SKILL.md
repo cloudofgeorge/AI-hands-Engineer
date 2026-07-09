@@ -14,17 +14,19 @@ Hard rules:
 - Latest runner stdout is the only active directive; each `next` or `continue --only-instructions` stdout supersedes all older runner stdout.
 - Invoke public `workflow-runner` commands with `--only-instructions` when supported, then follow stdout exactly.
 - `workflow-runner write-output` accepts or rejects one host request output only; it is not navigation.
-- Use only public run/runner commands from the skill root. Do not inspect or mutate private runtime files, task repository source, workflow source, runner `lib/**`, schemas, or CLI help to infer protocol.
+- Use only public run/runner commands. Do not inspect or mutate private runtime files, task repository source, workflow source, runner `lib/**`, schemas, or CLI help to infer protocol.
+- The default runs root is `~/.orbita/workflow-runs/v1`, or `$ORBITA_HOME/workflow-runs/v1` when `ORBITA_HOME` is set. Before the first `workflow-runs` / `workflow-runner` command, set `WORKFLOW_RUNS_ROOT` only when the host/operator needs a non-default storage location; it is the single explicit override.
 - Orbita is not the task implementer. While a worker owns a step, do not do independent research, implementation, review, or tests for that task.
 - Execute only the current stdout and its embedded commands. Do not reconstruct missing `write-output`, `continue`, or approval JSON from source. If stdout lacks enough executable instruction, report a runner contract bug without inventing a workflow terminal state.
 - After spawning a worker, wait for that worker's accepted output or blocker before continuing the run.
+- Before running any Orbita CLI command from this skill, set `ORBITA_SKILL_ROOT` to the directory containing this `SKILL.md`, then invoke entrypoints by absolute path through `$ORBITA_SKILL_ROOT/lib/entrypoints/cli/...`. Do not use `./lib/...` because the session cwd may be a task workspace, not the skill root.
 
 ## Routing model
 
 Most Orbita branches overlap. Do not treat routing as durable modes. Classify only enough to choose the next public command:
 
 - If the latest runner stdout is already active, follow that stdout. Do not inspect the workflow catalog.
-- If the user only asks to list/show available workflows, run `bun ./lib/entrypoints/cli/workflow-catalog.mjs list --human`, show the list, and stop.
+- If the user only asks to list/show available workflows, run `bun "$ORBITA_SKILL_ROOT/lib/entrypoints/cli/workflow-catalog.mjs" list --human`, show the list, and stop.
 - If the user asks to continue/resume/reclaim an existing run, list public run identities first. If no existing run fits and the user still wants work executed, create a new run through workflow resolution.
 - Before creating any new run, resolve the workflow first, even when the user named a workflow.
 
@@ -35,13 +37,13 @@ Resolve the workflow before creating/registering a run. The only executable work
 List workflows:
 
 ```bash
-bun ./lib/entrypoints/cli/workflow-catalog.mjs list --json
+bun "$ORBITA_SKILL_ROOT/lib/entrypoints/cli/workflow-catalog.mjs" list --json
 ```
 
 Resolve a named, aliased, or fuzzy workflow:
 
 ```bash
-bun ./lib/entrypoints/cli/workflow-catalog.mjs resolve '<workflow name>' --json
+bun "$ORBITA_SKILL_ROOT/lib/entrypoints/cli/workflow-catalog.mjs" resolve '<workflow name>' --json
 ```
 
 Use workflow `name` and top-level `description` for routing; use `path` only after selection/resolution as `--workflow`. Do not walk `../../workflows`, read private runtime state, or inspect `steps.*.input.prompt` to choose.
@@ -53,7 +55,7 @@ Branch closure:
 - No resolver match: rank catalog candidates from task and workflow descriptions.
 - No named workflow: ask one selection question with at most three `name - short reason` candidates; use `request_user_input` when available. The user may pick one, ask for all workflows, or type a workflow name/alias. Resolve fuzzy replies again.
 - No candidate fits: say so and offer to list workflows or create/design a workflow if that exists in the catalog.
-- List-only requests stop after `bun ./lib/entrypoints/cli/workflow-catalog.mjs list --human` unless the user also asked to run a workflow.
+- List-only requests stop after `bun "$ORBITA_SKILL_ROOT/lib/entrypoints/cli/workflow-catalog.mjs" list --human` unless the user also asked to run a workflow.
 - Never accept user-typed workflow paths as executable paths.
 
 ## Bootstrap
@@ -61,7 +63,7 @@ Branch closure:
 Prepare compact title, summary, owner, harness, session id, and dense user prompt. List public run identities:
 
 ```bash
-bun ./lib/entrypoints/cli/workflow-runs.mjs list
+bun "$ORBITA_SKILL_ROOT/lib/entrypoints/cli/workflow-runs.mjs" list
 ```
 
 Select an existing run only from public fields: `runId`, title, summary, workflow identity/path, status, timestamps, task key/fingerprint, and occupancy. If exactly one candidate fits, use its exact `runId`; if several fit, ask by human-readable summary; if occupied, ask whether to wait, choose another run, or explicitly resolve the lease.
@@ -69,7 +71,7 @@ Select an existing run only from public fields: `runId`, title, summary, workflo
 If no run fits, resolve the workflow, then create/register one run identity:
 
 ```bash
-bun ./lib/entrypoints/cli/workflow-runs.mjs create --workflow <absolute-catalog-workflow-path> --title '<title>' --summary '<summary>' --owner <owner> --harness <harness> --session-id <session-id>
+bun "$ORBITA_SKILL_ROOT/lib/entrypoints/cli/workflow-runs.mjs" create --workflow <absolute-catalog-workflow-path> --title '<title>' --summary '<summary>' --owner <owner> --harness <harness> --session-id <session-id>
 ```
 
 Never pass repo-relative workflow paths such as `workflows/.../workflow.json` into `workflow-runs create` or runner `--workflow` commands. If a relative workflow path error appears, rerun `workflow-catalog resolve`/`list` and use the returned absolute catalog `path`; do not guess cwd or repair the path manually.
@@ -77,7 +79,7 @@ Never pass repo-relative workflow paths such as `workflows/.../workflow.json` in
 Claim the selected run before calling the runner:
 
 ```bash
-lease_token=$(bun ./lib/entrypoints/cli/workflow-runs.mjs claim --run-id <run-id> --owner <owner> --harness <harness> --session-id <session-id> --print-lease-token)
+lease_token=$(bun "$ORBITA_SKILL_ROOT/lib/entrypoints/cli/workflow-runs.mjs" claim --run-id <run-id> --owner <owner> --harness <harness> --session-id <session-id> --print-lease-token)
 ```
 
 Extract and preserve exact `runId` and `lease_token`; never invent, shorten, or retype the token from memory. If missing, claim again or report the missing runner authority without inventing a workflow terminal state.
@@ -85,7 +87,7 @@ Extract and preserve exact `runId` and `lease_token`; never invent, shorten, or 
 Start by asking the runner for the first instruction:
 
 ```bash
-bun ./lib/entrypoints/cli/workflow-runner.mjs next --run-id <run-id> --user-prompt '<clear dense user task prompt>' --lease-token "$lease_token" --only-instructions
+bun "$ORBITA_SKILL_ROOT/lib/entrypoints/cli/workflow-runner.mjs" next --run-id <run-id> --user-prompt '<clear dense user task prompt>' --lease-token "$lease_token" --only-instructions
 ```
 
 Follow stdout text exactly.
@@ -138,7 +140,7 @@ If the instructions cannot be loaded, stop with an error and do not continue.
 ```
 
 - Only the selected request instruction command may be substituted. The final worker prompt must contain no other text.
-- After the actual worker id is known, run `bindAgentCommand` after replacing only literal `<agent-id>` with the shell-quoted actual worker id.
+- After the actual worker id is known, pass it through the latest runner-provided `continue --bind-agent '<step-id>=<agent-id>'` flag; do not run a separate binding command when stdout provides the combined continue command.
 - Treat `preferredAgentId` and `baton.workerBindings[stepId]` as advisory reuse hints only; do not create attempt ids, agent objects, lifecycle/session registries, transcripts, or output state.
 - Workers use the validating `write-output` command from loaded instructions. `write-output` returns acceptance JSON or validation errors only; workers never call `continue`.
 - If a worker needs user input before validated output, ask the focused question and forward the answer into the same worker session. Do not replace that worker or let workers treat themselves as direct user-facing agents.
@@ -154,7 +156,9 @@ If the instructions cannot be loaded, stop with an error and do not continue.
 - If the retry also gives no accepted output, concrete progress evidence, or blocker within the same 10 minute plus 2 minute watchdog window, submit a validated blocked output for the same current request when possible and keep the run recoverable from that request id.
 - Do not use heartbeat as a substitute for this watchdog; worker bootstrap hangs must be detected before waiting out the run lease. Do not persist progress in baton, scrape transcripts, read private runner state, or add durable worker status storage.
 
-For `resolve_worker_blocker`, the orchestrator handles the request directly. Read `recoverableBlocker`, resolve the missing decision/input/capability through the smallest safe action, then write strict JSON with `writeResolutionCommand`:
+For `resolve_worker_blocker`, the orchestrator handles the request directly. Read `recoverableBlocker`, resolve the missing decision/input/capability through the smallest safe action, then write strict JSON with `writeResolutionCommand`.
+
+If a researcher or architect step returns a user-answerable question in `recoverableBlocker.needed`, route it to the user as a question. Do not answer it from orchestrator inference, collapse it into a summary, or mark it resolved without the user's answer unless the blocker explicitly says it is a non-user-answerable capability or environment blocker.
 
 ```json
 {

@@ -126,6 +126,11 @@ function workerOutput(summary) {
   return { outcome: 'ready', results: [{ type: 'check', summary }] };
 }
 
+function persistedCurrentRequestStepIds(runDir) {
+  const currentRequests = JSON.parse(readFileSync(path.join(runDir, '.workflow-runner', 'current-requests.json'), 'utf8'));
+  return (currentRequests.requests ?? currentRequests).map((request) => request.stepId ?? request.id).sort();
+}
+
 async function currentRequests(runId, workflowPath) {
   const response = await expectRunner(['next', '--run-id', runId, '--workflow', workflowPath], 'derive current requests');
   return response.requests ?? [];
@@ -188,13 +193,13 @@ test('runner: next returns a single host action request with load command only',
   assert.match(response.orchestratorInstruction, /Use the JSON response requests field as the machine-readable source when available/);
   assert.match(response.orchestratorInstruction, /Current host requests:\n- run_worker: prepare/);
   assert.doesNotMatch(response.orchestratorInstruction, /run_worker request, enforce this host watchdog/);
-  assert.match(response.orchestratorInstruction, new RegExp(`load fresh instructions: .*workflow-runner\\.mjs' instructions --run-id '${runId}' --step-id 'prepare' --runs-root '${runsRoot}' --lease-token '${leaseToken}'`));
-  assert.match(response.orchestratorInstruction, new RegExp(`load follow-up instructions when restoring the preferred worker: .*workflow-runner\\.mjs' instructions --follow-up --run-id '${runId}' --step-id 'prepare' --runs-root '${runsRoot}' --lease-token '${leaseToken}'`));
-  assert.match(response.orchestratorInstruction, new RegExp(`bind actual worker id after dispatch: .*workflow-runner\\.mjs' bind-agent --run-id '${runId}' --step-id 'prepare' --runs-root '${runsRoot}' --agent-id <agent-id> --lease-token '${leaseToken}'`));
-  assert.match(response.orchestratorInstruction, /Before continue, record a concise orchestrator debug summary/);
-  assert.match(response.orchestratorInstruction, new RegExp(`workflow-runner\\.mjs' record-orchestrator --run-id '${runId}' --runs-root '${runsRoot}' --lease-token '${leaseToken}'`));
-  assert.equal(response.orchestratorDebugCommand.includes(`record-orchestrator --run-id '${runId}' --runs-root '${runsRoot}' --lease-token '${leaseToken}'`), true);
-  assert.equal(response.orchestratorInstruction.includes(`Then run:\n${workflowRunnerCommand} continue --run-id '${runId}' --runs-root '${runsRoot}' --lease-token '${leaseToken}' --only-instructions`), true);
+  assert.match(response.orchestratorInstruction, new RegExp(`fresh-worker instruction-loader command: .*workflow-runner\\.mjs' instructions --run-id '${runId}' --step-id 'prepare' --runs-root '${runsRoot}' --lease-token '${leaseToken}'`));
+  assert.match(response.orchestratorInstruction, /send that command to the worker bootstrap; do not run it in the orchestrator/);
+  assert.match(response.orchestratorInstruction, new RegExp(`preferred-worker follow-up instruction-loader command: .*workflow-runner\\.mjs' instructions --follow-up --run-id '${runId}' --step-id 'prepare' --runs-root '${runsRoot}' --lease-token '${leaseToken}'`));
+  assert.match(response.orchestratorInstruction, /send that command only when restoring the preferred worker; do not run it in the orchestrator/);
+  assert.match(response.orchestratorInstruction, /pass actual worker id to continue: --bind-agent 'prepare=<agent-id>'/);
+  assert.doesNotMatch(response.orchestratorInstruction, /Before continue, record a concise orchestrator debug summary/);
+  assert.equal(response.orchestratorInstruction.includes(`${workflowRunnerCommand} continue --run-id '${runId}' --runs-root '${runsRoot}' --lease-token '${leaseToken}' --bind-agent 'prepare=<agent-id>' --orchestrator-debug-json '<paste orchestrator debug JSON here>' --only-instructions`), true);
   assert.match(response.orchestratorInstruction, /Follow that stdout instruction exactly/);
   assert.doesNotMatch(response.orchestratorInstruction, /write-output/);
   assert.doesNotMatch(response.orchestratorInstruction, /Load instructions with:/);
@@ -209,7 +214,6 @@ test('runner: next returns a single host action request with load command only',
   assert.equal(response.requests[0].loadInstructionsCommand, `${workflowRunnerCommand} instructions --run-id '${runId}' --step-id 'prepare' --runs-root '${runsRoot}' --lease-token '${leaseToken}'`);
   assert.equal(response.requests[0].loadInstructionsCommand.startsWith("bun './"), false);
   assert.equal(response.requests[0].loadFollowupInstructionsCommand.startsWith("bun './"), false);
-  assert.equal(response.requests[0].bindAgentCommand.startsWith("bun './"), false);
   assert.equal(response.orchestratorInstruction.includes("bun ./lib/entrypoints/cli/workflow-runner.mjs"), false);
   assert.equal(Object.hasOwn(response.requests[0], 'outputPath'), false);
 
@@ -717,9 +721,25 @@ test('runner: write-output accepts valid stdin JSON into baton state and continu
   assert.equal(batonAfterWrite.cursor, 'prepare');
   assert.equal(batonAfterWrite.state.prepare.outcome, 'ready');
 
-  const continued = await expectRunner(['continue', '--run-id', runId, '--workflow', workflowPath], 'continue from accepted output');
+  const debugNote = { summary: 'worker prepared output', evidence: ['write-output accepted'] };
+  const continued = await expectRunner(
+    [
+      'continue',
+      '--run-id', runId,
+      '--workflow', workflowPath,
+      '--bind-agent', 'prepare=worker-continue-1',
+      '--orchestrator-debug-json', JSON.stringify(debugNote),
+    ],
+    'continue from accepted output',
+  );
   assert.equal(continued.status, 'done');
   assert.equal(continued.baton.state.prepare.outcome, 'ready');
+  assert.deepEqual(continued.baton.workerBindings, { prepare: 'worker-continue-1' });
+  const historyAfterContinue = readFileSync(path.join(runDir, 'history.md'), 'utf8');
+  assert.match(historyAfterContinue, /source: workflow-runner-continue-bind-agent/);
+  assert.match(historyAfterContinue, /bound-agent:prepare/);
+  assert.match(historyAfterContinue, /source: workflow-runner-continue-orchestrator/);
+  assert.match(historyAfterContinue, /worker prepared output/);
 });
 
 test('runner: write-output rejects valid worker output without required debug summary side-channel', async () => {
@@ -855,12 +875,16 @@ test('runner: write-output separates parallel request outputs by step id before 
   writeJson(workflowPath, workflow);
 
   await expectRunner(['next', '--run-id', runId, '--workflow', workflowPath], 'next before prepare writer');
+  assert.deepEqual(persistedCurrentRequestStepIds(runDir), ['prepare']);
   assert.equal((await runRunner(['write-output', '--run-id', runId, '--step-id', 'prepare'], { input: JSON.stringify(workerOutput('prepared')), debugSummary: true })).status, 0);
+  assert.deepEqual(persistedCurrentRequestStepIds(runDir), ['prepare']);
   const fanout = await expectRunner(['continue', '--run-id', runId, '--workflow', workflowPath], 'continue to parallel branches');
   assert.deepEqual(fanout.requests.map((request) => request.stepId).sort(), ['branch_a', 'branch_b']);
+  assert.deepEqual(persistedCurrentRequestStepIds(runDir), ['branch_a', 'branch_b']);
 
   assert.equal((await runRunner(['write-output', '--run-id', runId, '--step-id', 'branch_a'], { input: JSON.stringify(workerOutput('A')), debugSummary: true })).status, 0);
   assert.equal((await runRunner(['write-output', '--run-id', runId, '--step-id', 'branch_b'], { input: JSON.stringify(workerOutput('B')), debugSummary: true })).status, 0);
+  assert.deepEqual(persistedCurrentRequestStepIds(runDir), ['branch_a', 'branch_b']);
   const batonAfterWrites = JSON.parse(readFileSync(path.join(runDir, 'baton.json'), 'utf8'));
   assert.equal(batonAfterWrites.state.branch_a.results[0].summary, 'A');
   assert.equal(batonAfterWrites.state.branch_b.results[0].summary, 'B');
@@ -868,6 +892,7 @@ test('runner: write-output separates parallel request outputs by step id before 
   const joined = await expectRunner(['continue', '--run-id', runId, '--workflow', workflowPath], 'continue from accepted parallel outputs');
   assert.equal(joined.status, 'needs_host_actions');
   assert.equal(joined.baton.cursor, 'join');
+  assert.deepEqual(persistedCurrentRequestStepIds(runDir), ['join']);
   assert.equal(joined.baton.state.branch_a.results[0].summary, 'A');
   assert.equal(joined.baton.state.branch_b.results[0].summary, 'B');
 });

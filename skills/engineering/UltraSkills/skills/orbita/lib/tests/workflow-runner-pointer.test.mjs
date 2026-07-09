@@ -6,7 +6,6 @@ import path from 'node:path';
 import { afterAll, test } from 'bun:test';
 import { fileURLToPath } from 'node:url';
 import {
-  bindAgent,
   continueRun,
   listPointerTransitions,
   movePointer,
@@ -124,9 +123,8 @@ function rawRunFiles(paths) {
 test('runner pointer API lists adjacent transitions and moves pointer with retained-state acknowledgement', async () => {
   const run = await createClaimedRun('api-retained');
   await next({ ...run, userPrompt: 'keep prompt marker', now: new Date('2026-06-01T10:00:01.000Z') });
-  await bindAgent({ ...run, stepId: 'prepare', agentId: 'agent-prepare', now: new Date('2026-06-01T10:00:02.000Z') });
   await acceptCurrentWorkerOutput({ ...run, stepId: 'prepare', summary: 'prepared' });
-  await continueRun({ ...run, now: new Date('2026-06-01T10:02:00.000Z') });
+  await continueRun({ ...run, bindAgents: ['prepare=agent-prepare'], now: new Date('2026-06-01T10:02:00.000Z') });
   const beforeMove = snapshot(run.paths);
 
   const listed = await listPointerTransitions({ ...run, now: new Date('2026-06-01T10:03:00.000Z') });
@@ -261,7 +259,7 @@ test('runner pointer API rejects stale transition ids and wrong leases without m
   assert.deepEqual(snapshot(run.paths), afterStaleRejected);
 });
 
-test('runner pointer API reports terminal and parallel cursors as unsupported', async () => {
+test('runner pointer API allows rollback from terminal cursors and reports parallel cursors as unsupported', async () => {
   const terminalRun = await createClaimedRun('api-terminal');
   await next({ ...terminalRun, now: new Date('2026-06-01T10:00:01.000Z') });
   await acceptCurrentWorkerOutput({ ...terminalRun, stepId: 'prepare', summary: 'prepared terminal' });
@@ -271,8 +269,19 @@ test('runner pointer API reports terminal and parallel cursors as unsupported', 
   await acceptCurrentWorkerOutput({ ...terminalRun, stepId: 'finalize', summary: 'finalized terminal' });
   await continueRun({ ...terminalRun, now: new Date('2026-06-01T10:04:00.000Z') });
   const terminal = await listPointerTransitions({ ...terminalRun, now: new Date('2026-06-01T10:05:00.000Z') });
-  assert.equal(terminal.unsupported.reason, 'terminal_run_unsupported');
-  assert.deepEqual(terminal.transitions, []);
+  assert.equal(terminal.unsupported, undefined);
+  assert.deepEqual(terminal.transitions.map((transition) => [transition.direction, transition.to.cursor]), [['backward', 'finalize']]);
+  assert.equal(terminal.transitions[0].retainedState.acknowledgementRequired, true);
+  assert.deepEqual(terminal.transitions[0].retainedState.stepIds, ['finalize']);
+  const terminalMoved = await movePointer({
+    ...terminalRun,
+    transitionId: terminal.transitions[0].id,
+    acknowledgeRetainedState: true,
+    now: new Date('2026-06-01T10:06:00.000Z'),
+  });
+  assert.equal(terminalMoved.current.cursor, 'finalize');
+  assert.equal(terminalMoved.current.status, 'running');
+  assert.equal(snapshot(terminalRun.paths).index.status, 'needs_host_actions');
 
   const parallelWorkflow = structuredClone(workflowDoc);
   parallelWorkflow.steps.prepare.next = ['branch_a', 'branch_b'];

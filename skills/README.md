@@ -21,6 +21,7 @@ Start here when an agent needs to choose which section README to open. Each sect
 | [Forthright](./forthright/README.md) | 1 | High-compression internal communication mode for agent-to-agent work. |
 | [gstack](./gstack/README.md) | 58 | Software-factory workflows for planning, review, browser QA, shipping, and multi-agent coordination. |
 | [Marketing](./marketing/README.md) | 45 | Growth, positioning, acquisition, conversion, lifecycle, and revenue workflows. |
+| [Note-taking](./note-taking/README.md) | 2 | Second Brain retrieval, capture, handoffs, reviews, and Obsidian vault note work. |
 | [Personal](./personal/README.md) | 3 | User-specific writing, notes, and cookbook workflows. |
 | [Productivity](./productivity/README.md) | 5 | General workflow, handoff, teaching, grilling, and skill-writing discipline. |
 | [SEO](./seo/README.md) | 20 | SEO/GEO research, technical audits, content, authority, monitoring, and reporting. |

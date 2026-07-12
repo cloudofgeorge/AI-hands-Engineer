@@ -27,6 +27,7 @@ root repository.
     ├── forthright/
     ├── gstack/
     ├── marketing/
+    ├── note-taking/
     ├── personal/
     ├── productivity/
     ├── seo/
@@ -52,6 +53,7 @@ README:
 | Forthright | Agent-to-agent handoffs and compact internal operational writing. | [`skills/forthright/README.md`](skills/forthright/README.md) |
 | gstack | Software-factory workflows: plan, review, browser QA, ship, deploy, canary, benchmark, or coordinate agents. | [`skills/gstack/README.md`](skills/gstack/README.md) |
 | Marketing | Growth, positioning, acquisition, conversion, lifecycle, revenue, and launch work. | [`skills/marketing/README.md`](skills/marketing/README.md) |
+| Note-taking | Second Brain retrieval, capture, handoffs, reviews, and Obsidian vault note work. | [`skills/note-taking/README.md`](skills/note-taking/README.md) |
 | Personal | User-specific writing, Obsidian, and recipe/cookbook workflows. | [`skills/personal/README.md`](skills/personal/README.md) |
 | Productivity | General workflow control: handoffs, teaching, grilling, and writing better skills. | [`skills/productivity/README.md`](skills/productivity/README.md) |
 | SEO | SEO/GEO research, technical audits, content, schema, authority, monitoring, and reporting. | [`skills/seo/README.md`](skills/seo/README.md) |

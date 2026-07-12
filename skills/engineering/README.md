@@ -86,6 +86,7 @@ Model- or user-reachable; descriptions are trigger-oriented so an agent can rout
 
 ### GitHub, CI, build, and deploy tools
 
+- [ci-cd](./tools/ci-cd/SKILL.md) — Use when investigating or changing GitHub Actions or GitLab CI workflows, deployment gates, runners, artifacts, secrets, triggers, or rollbacks.
 - [github-ticket-intake](./tools/github-ticket-intake/SKILL.md) — Draft or create GitHub issues from messy request text.
 - [gh-fix-ci](./tools/gh-fix-ci/SKILL.md) — Use when a user asks to debug or fix failing GitHub PR checks that run in GitHub Actions.
 - [turborepo](./tools/turborepo/SKILL.md) — Turborepo monorepo build system guidance.

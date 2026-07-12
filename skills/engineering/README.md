@@ -8,7 +8,7 @@ This README is a routing index for agents. Keep it short; detailed procedures be
 
 - Prefer the narrowest skill that directly matches the task.
 - Load additional skills only when their workflow is needed, not just because the topic is adjacent.
-- Start with the narrowest domain skill that matches the request: security, macOS, CI, deployment, web, or mobile work before broad engineering skills.
+- Start with the narrowest domain skill that matches the request: security, infrastructure, macOS, CI, deployment, web, or mobile work before broad engineering skills.
 - Use `diagnose`/`diagnosing-bugs` for root-cause work; use `tdd` once the target behavior is understood and ready to implement.
 - Use `to-spec`/`to-prd` → `to-tickets`/`to-issues` → `implement` for explicit planning-to-execution flows.
 - Use `wayfinder` for efforts too large or foggy for one session, then resolve the map one ticket at a time.
@@ -105,6 +105,10 @@ Model- or user-reachable; descriptions are trigger-oriented so an agent can rout
 - [macos-tahoe-apis](./domains/macos/macos-development/macos-tahoe-apis/SKILL.md) — Guide to macOS 26 Tahoe APIs and features.
 - [swiftdata-architecture](./domains/macos/macos-development/swiftdata-architecture/SKILL.md) — Deep dive into SwiftData design patterns and best practices.
 - [ui-review-tahoe](./domains/macos/macos-development/ui-review-tahoe/SKILL.md) — Comprehensive UI/UX review for macOS Tahoe apps.
+
+### Infrastructure domain skills
+
+- [troubleshooting-kubernetes](./domains/infrastructure/troubleshooting-kubernetes/SKILL.md) — Use when investigating Kubernetes incidents, failing workloads, Service connectivity, NetworkPolicies, permissions, or rollout health.
 
 ### Web and mobile domain skills
 

@@ -51,7 +51,6 @@ README:
 | Design | Design critique, high-fidelity prototypes, interactive demos, slides, animations, image generation, brand systems, or frontend taste workflows. | [`skills/design/README.md`](skills/design/README.md) |
 | Engineering | Research, code review, wayfinding, code planning, architecture, debugging, implementation, TDD, security, CI, deployment, macOS, web, UltraSkills staged research/review workflows, or Superpowers process workflows. | [`skills/engineering/README.md`](skills/engineering/README.md) |
 | Forthright | Agent-to-agent handoffs and compact internal operational writing. | [`skills/forthright/README.md`](skills/forthright/README.md) |
-| gstack | Software-factory workflows: plan, review, browser QA, ship, deploy, canary, benchmark, or coordinate agents. | [`skills/gstack/README.md`](skills/gstack/README.md) |
 | Marketing | Growth, positioning, acquisition, conversion, lifecycle, revenue, and launch work. | [`skills/marketing/README.md`](skills/marketing/README.md) |
 | Note-taking | Second Brain retrieval, capture, handoffs, reviews, and Obsidian vault note work. | [`skills/note-taking/README.md`](skills/note-taking/README.md) |
 | Personal | User-specific writing, Obsidian, and recipe/cookbook workflows. | [`skills/personal/README.md`](skills/personal/README.md) |

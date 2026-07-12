@@ -111,6 +111,7 @@ Model- or user-reachable; descriptions are trigger-oriented so an agent can rout
 
 - [troubleshooting-kubernetes](./domains/infrastructure/troubleshooting-kubernetes/SKILL.md) — Use when investigating Kubernetes incidents, failing workloads, Service connectivity, NetworkPolicies, permissions, or rollout health.
 - [terraform](./domains/infrastructure/terraform/SKILL.md) — Use when reviewing Terraform plans, state locks, workspaces, backends, drift, imports, or infrastructure-change proposals.
+- [observability](./domains/infrastructure/observability/SKILL.md) — Use when investigating metrics, logs, traces, alerts, dashboards, SLI/SLO behavior, alert noise, or monitoring changes.
 
 ### Web and mobile domain skills
 

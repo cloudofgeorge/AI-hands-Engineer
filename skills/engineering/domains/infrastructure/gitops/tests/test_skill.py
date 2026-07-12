@@ -30,14 +30,18 @@ def main() -> None:
         (r"explicit (?:user|operator)(?:\s+or\s+(?:user|operator))? confirmation", "mutation approval gate"),
         (r"argocd app diff", "Argo CD diff command"),
         (r"flux get kustomizations", "Flux inspection command"),
+        (r"-n \"\$NAMESPACE\"", "namespace-scoped Flux inspection"),
         (r"reconcile", "reconciliation guardrail"),
         (r"prune", "prune guardrail"),
         (r"rollback", "rollback requirement"),
         (r"manual.*kubectl", "manual-live-change guardrail"),
         (r"Secret", "secret handling"),
         (r"argo-cd\.readthedocs\.io|fluxcd\.io", "official documentation link"),
+        (r"flux_reconcile_kustomization", "canonical Flux reconcile documentation link"),
     ]:
         require(text, pattern, label)
+    if re.search(r"^flux get .*\s-A\s*$", text, flags=re.IGNORECASE | re.MULTILINE):
+        raise AssertionError("Flux read-only examples must not default to all-namespaces enumeration")
 
     readme = README.read_text(encoding="utf-8")
     require(readme, r"\[gitops\]\(\./domains/infrastructure/gitops/SKILL\.md\)", "engineering routing entry")

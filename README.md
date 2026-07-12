@@ -25,7 +25,6 @@ root repository.
     ├── design/
     ├── engineering/
     ├── forthright/
-    ├── gstack/
     ├── marketing/
     ├── note-taking/
     ├── personal/

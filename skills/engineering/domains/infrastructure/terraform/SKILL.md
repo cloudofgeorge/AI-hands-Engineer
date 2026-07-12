@@ -66,7 +66,7 @@ A command failing because the directory is uninitialized is evidence, not a reas
 
 ## 3. Inspect drift and a speculative plan
 
-A normal `terraform plan` is a read-only proposal: it reads the current remote objects and compares them with configuration, but does not execute the proposed changes. Start with a speculative plan and review it as a change artifact.
+A normal `terraform plan` is non-infrastructure-mutating: it reads current remote objects and compares them with configuration, but does not execute the proposed changes. When the selected backend supports locking, it can acquire an operation lock and temporarily block concurrent work. Before running it, confirm the backend/workspace and that this temporary lock is acceptable; do **not** bypass it with `-lock=false`. Start with a speculative plan and review it as a change artifact.
 
 ```bash
 terraform plan -input=false -no-color
@@ -80,7 +80,7 @@ Use the normal plan to identify proposed creates, updates, replacements, and des
 - immutable-resource replacement, public exposure, IAM, networking, data, and cost effects;
 - whether provider data, variables, or sensitive values are redacted or need restricted review.
 
-Do not make `-target`, `-replace`, `-destroy`, `-refresh-only`, `-parallelism`, `-lock=false`, `-var`, or `-var-file` a routine shortcut. Each changes the meaning or safety of the plan and needs a documented reason and an explicit approval boundary. Never use a targeted plan to claim that the rest of the configuration is safe.
+Do not make `-target`, `-replace`, `-destroy`, `-refresh-only`, `-refresh=false`, `-invoke`, `-parallelism`, `-lock=false`, `-var`, or `-var-file` a routine shortcut. Each changes the meaning or safety of the plan and needs a documented reason and an explicit approval boundary. `-refresh=false` skips synchronization with remote objects, so its output may not reflect current drift and cannot by itself support an apply approval. `-invoke` creates a plan for the named action while excluding all other configuration, so confirm the action identity and effects explicitly and never treat that plan as evidence that the rest of the configuration is safe. Never use a targeted plan to claim that the rest of the configuration is safe.
 
 ## 4. State and lock incidents
 

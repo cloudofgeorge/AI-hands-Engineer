@@ -43,13 +43,13 @@ argocd app diff "$APP"
 
 `argocd app diff` can exit nonzero when a diff exists; treat that as diagnostic evidence, not an instruction to sync. Record the affected resource addresses, intended revision, health, sync status, hooks/waves, and whether deletion/pruning or immutable-field replacement is involved.
 
-For Flux, inspect controller health and the named reconciliation object before requesting reconciliation:
+For Flux, confirm the namespace before listing any objects. Default to the confirmed namespace and named object(s), rather than organization-wide enumeration; `-A` may expose unrelated controller/resource metadata and requires explicit scope confirmation. Then inspect controller health and the named reconciliation object before requesting reconciliation:
 
 ```bash
 flux check
-flux get sources all -A
-flux get kustomizations -A
-flux get helmreleases -A
+flux get sources all -n "$NAMESPACE"
+flux get kustomizations -n "$NAMESPACE"
+flux get helmreleases -n "$NAMESPACE"
 ```
 
 Use the object’s status, observed generation, last attempted/applied revision, conditions, events, and narrowly scoped controller logs to distinguish source fetch, decryption, render, policy, dependency, Helm, apply, and readiness failures. `flux reconcile` is not a read-only diagnostic command: it asks the controller to reconcile and can cause it to apply the current desired state.
@@ -92,5 +92,5 @@ If scope, deletion, health, or revision differs from the reviewed plan, stop fur
 - [Argo CD sync options](https://argo-cd.readthedocs.io/en/stable/user-guide/sync-options/) — sync behavior and options can change live resources.
 - [Argo CD sync waves](https://argo-cd.readthedocs.io/en/stable/user-guide/sync-waves/) — ordering and hooks affect rollout scope.
 - [Flux troubleshooting](https://fluxcd.io/flux/cheatsheets/troubleshooting/) — inspect conditions, sources, events, and controller logs.
-- [Flux reconcile kustomization](https://fluxcd.io/flux/cmd/flux-reconcile-kustomization/) — reconcile is a controller request, not a read-only inspection.
+- [Flux reconcile kustomization](https://fluxcd.io/flux/cmd/flux_reconcile_kustomization/) — reconcile is a controller request, not a read-only inspection.
 - [Kubernetes Secrets](https://kubernetes.io/docs/concepts/configuration/secret/) — treat Secret data and references as sensitive operational material.

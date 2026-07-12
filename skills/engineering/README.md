@@ -112,6 +112,8 @@ Model- or user-reachable; descriptions are trigger-oriented so an agent can rout
 - [troubleshooting-kubernetes](./domains/infrastructure/troubleshooting-kubernetes/SKILL.md) — Use when investigating Kubernetes incidents, failing workloads, Service connectivity, NetworkPolicies, permissions, or rollout health.
 - [terraform](./domains/infrastructure/terraform/SKILL.md) — Use when reviewing Terraform plans, state locks, workspaces, backends, drift, imports, or infrastructure-change proposals.
 - [observability](./domains/infrastructure/observability/SKILL.md) — Use when investigating metrics, logs, traces, alerts, dashboards, SLI/SLO behavior, alert noise, or monitoring changes.
+- [gitops](./domains/infrastructure/gitops/SKILL.md) — Use when investigating or changing Argo CD or Flux reconciliation, desired-state drift, sync status, GitOps rollbacks, or Git-managed Kubernetes delivery.
+- [aws-finops](./domains/infrastructure/aws-finops/SKILL.md) — Use when investigating AWS cost or usage, Cost Explorer, CUR, Budgets, allocation, spend anomalies, Savings Plans, Reserved Instances, or optimization proposals.
 
 ### Web and mobile domain skills
 

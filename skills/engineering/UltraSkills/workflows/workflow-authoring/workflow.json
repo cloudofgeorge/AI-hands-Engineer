@@ -12,7 +12,7 @@
       "input": {
         "role": "architect",
         "prompt": [
-          "Design the smallest useful workflow-runner workflow for the user's task. Inspect existing workflows and repo rules. Produce a workflow contract with name, path, top-level description, use/do-not-use boundaries, steps, roles, approval gates, output schemas, validation plan, smoke scenario, analyzer finding contract, rerun comparison plan, and non-goals. When revising after workflow_design_attack feedback or approve_workflow_design rejection, read prompt input feedback and address it explicitly while preserving approved constraints. Return ready_for_attack when the contract is ready for critic review, or blocked when the workflow should not be created or required context is unavailable. Do not edit files in this step.",
+          "Design the smallest useful workflow-runner workflow for the user's task. Inspect existing workflows and repo rules. Produce a workflow contract with name, path, top-level description, use/do-not-use boundaries, steps, roles, approval gates, output schemas, validation plan, smoke scenario, analyzer finding contract, rerun comparison plan, and non-goals. Emit a concise approval summary and one immutable workflow-contract artifact containing the full contract. When revising after workflow_design_attack feedback or approve_workflow_design rejection, read prompt input feedback and address it explicitly while preserving approved constraints. Return ready_for_attack for the initial contract or a critic-requested revision. If the latest approve_workflow_design output is rejected, return ready_for_approval after the correction and do not rerun workflow_design_attack. Report a non-blocking stop when the workflow should not be created or required context is unavailable. Do not edit files in this step.",
           "",
           "Input context:",
           "Previous workflow design draft:",
@@ -22,7 +22,7 @@
           "${{ input.workflow_design_attack.verdict | default: \"No previous workflow design attack verdict.\" }}",
           "",
           "Workflow design approval output:",
-          "${{ input.approve_workflow_design | default: \"No previous workflow design approval.\" }}"
+          "${{ input.approve_workflow_design.feedback | default: \"No previous workflow design feedback.\" }}"
         ]
       },
       "output": {
@@ -32,7 +32,8 @@
       "next": {
         "match": "${{ output.outcome }}",
         "cases": {
-          "ready_for_attack": "workflow_design_attack"
+          "ready_for_attack": "workflow_design_attack",
+          "ready_for_approval": "approve_workflow_design"
         }
       }
     },
@@ -42,7 +43,7 @@
       "input": {
         "role": "critic",
         "prompt": [
-          "Attack the proposed workflow contract. Assume the workflow is unnecessary, overcomplicated, too vague, missing validation, or should be a direct skill/task instead. Check routing description quality, step/gate necessity, role ownership, output schemas, smoke evidence, analyzer findings, human-reviewed edit gate, rerun comparison, validation surface, and whether an existing workflow already fits. Return approved, needs_revision, or blocked.",
+          "Attack the proposed workflow contract. Assume the workflow is unnecessary, overcomplicated, too vague, missing validation, or should be a direct skill/task instead. Check routing description quality, step/gate necessity, role ownership, output schemas, smoke evidence, analyzer findings, human-reviewed edit gate, rerun comparison, validation surface, and whether an existing workflow already fits. Return approved or needs_revision as completed output; otherwise report a non-blocking stop.",
           "",
           "Input context:",
           "Workflow contract:",
@@ -65,19 +66,19 @@
       "name": "Approve workflow design",
       "kind": "approval",
       "input": {
-        "prompt": [
-          "Show the workflow contract and critic verdict to the user. Continue only after explicit approval. Return approval approved to implement the workflow, rejected to revise the design, or blocked with the blocker.",
-          "",
-          "Input context:",
-          "Workflow contract:",
-          "${{ input.workflow_design_draft.workflow_contract }}",
-          "",
-          "Critic verdict:",
-          "${{ input.workflow_design_attack.verdict }}",
-          "",
-          "Critic findings:",
-          "${{ input.workflow_design_attack.findings | default: \"No critic findings provided.\" }}"
-        ]
+        "summary": "${{ input.workflow_design_draft.summary }}",
+        "artifacts": [
+          "${{ input.workflow_design_draft.artifacts }}"
+        ],
+        "verdict": {
+          "outcome": "${{ input.workflow_design_attack.outcome }}",
+          "summary": "${{ input.workflow_design_attack.verdict }}",
+          "findings": "${{ input.workflow_design_attack.findings }}",
+          "include_when": {
+            "selector": "${{ input.workflow_design_draft.outcome }}",
+            "equals": "ready_for_attack"
+          }
+        }
       },
       "next": {
         "match": "${{ output.approval }}",
@@ -85,9 +86,6 @@
           "approved": "workflow_implementation",
           "rejected": "workflow_design_draft"
         }
-      },
-      "output": {
-        "schema": "schemas/reviewed-improvement-approval-output.json"
       }
     },
     "workflow_implementation": {
@@ -96,7 +94,7 @@
       "input": {
         "role": "architect",
         "prompt": [
-          "Implement exactly the approved workflow contract. Add or update workflow.json, schemas, and any minimal docs/tests needed for catalog, validation, and deterministic smoke comparison. Keep workflow routing in top-level description. On the first pass, implement the approved workflow design. On later passes after reviewed_edit_intent, apply only the human-reviewed improvement boundary from reviewed_edit_intent and preserve the original approved design constraints. When revising after workflow_implementation_attack feedback or rerun_comparison needs_revision feedback, read prompt input feedback and address it explicitly while preserving the approved workflow design and reviewed edit boundary. Use an explicit isolated WORKFLOW_RUNS_ROOT for smoke/test contexts, clean it up, and verify no source-tree .workflow-runs artifacts are created. Run the narrow validation available for the changed workflow and report changed files plus validation results. Return implemented or blocked.",
+          "Implement exactly the approved workflow contract. Add or update workflow.json, schemas, and any minimal docs/tests needed for catalog, validation, and deterministic smoke comparison. Keep workflow routing in top-level description. On the first pass, implement the approved workflow design. On later passes after reviewed_edit_intent, apply only the human-reviewed improvement boundary from reviewed_edit_intent and preserve the original approved design constraints. When revising after workflow_implementation_attack feedback or rerun_comparison needs_revision feedback, read prompt input feedback and address it explicitly while preserving the approved workflow design and reviewed edit boundary. Use an explicit isolated WORKFLOW_RUNS_ROOT for smoke/test contexts, clean it up, and verify no source-tree .workflow-runs artifacts are created. Run the narrow validation available for the changed workflow and report changed files plus validation results. Return implemented as completed output, or report a non-blocking stop.",
           "",
           "Input context:",
           "Approved workflow contract:",
@@ -184,7 +182,7 @@
       "input": {
         "role": "architect",
         "prompt": [
-          "Analyze the workflow-authoring implementation and smoke evidence. Emit evidence-backed findings with evidence path, affected workflow contract surface, severity, and next action. Findings are recommendations only and must not authorize edits directly. Return ready_for_review when a human-reviewed improvement decision is needed, no_changes when no improvement edit should be proposed, or blocked with the blocker.",
+          "Analyze the workflow-authoring implementation and smoke evidence. Emit evidence-backed findings with evidence path, affected workflow contract surface, severity, and next action. Findings are recommendations only and must not authorize edits directly. Always emit a concise summary and artifacts array. When human review is needed, emit one immutable reviewed-improvement artifact containing the smoke/analyzer/edit-boundary packet; for no_changes, emit an empty artifacts array. Return ready_for_review when a human-reviewed improvement decision is needed or no_changes when no improvement edit should be proposed as completed output; otherwise report a non-blocking stop.",
           "",
           "Input context:",
           "Approved workflow contract:",
@@ -216,18 +214,9 @@
       "name": "Approve reviewed improvement",
       "kind": "approval",
       "input": {
-        "prompt": [
-          "Show the smoke evidence and analyzer findings to the user. Continue into improvement edits only after explicit human approval. Return approval approved to capture reviewed edit intent, rejected to skip improvement edits and continue to final implementation attack, or blocked with the blocker.",
-          "",
-          "Input context:",
-          "Approved workflow contract:",
-          "${{ input.workflow_design_draft.workflow_contract }}",
-          "",
-          "Smoke evidence:",
-          "${{ input.smoke_evidence }}",
-          "",
-          "Analyzer findings:",
-          "${{ input.analyzer_findings }}"
+        "summary": "${{ input.analyzer_findings.summary }}",
+        "artifacts": [
+          "${{ input.analyzer_findings.artifacts }}"
         ]
       },
       "next": {
@@ -236,9 +225,6 @@
           "approved": "reviewed_edit_intent",
           "rejected": "workflow_implementation_attack"
         }
-      },
-      "output": {
-        "schema": "schemas/approval-output.json"
       }
     },
     "reviewed_edit_intent": {
@@ -247,7 +233,7 @@
       "input": {
         "role": "architect",
         "prompt": [
-          "Capture the human-reviewed approval boundary before any improvement edit. Convert approve_reviewed_improvement and analyzer_findings into a reviewed edit intent record with approved findings, explicit allowed edit surfaces, explicit non-goals, and required validation evidence. Do not edit workflow files in this step. Return ready_for_implementation or blocked.",
+          "Capture the human-reviewed approval boundary before any improvement edit. Convert approve_reviewed_improvement and analyzer_findings into a reviewed edit intent record with approved findings, explicit allowed edit surfaces, explicit non-goals, and required validation evidence. Do not edit workflow files in this step. Return ready_for_implementation as completed output, or report a non-blocking stop.",
           "",
           "Input context:",
           "Approved workflow contract:",
@@ -280,7 +266,7 @@
       "input": {
         "role": "qa-reliability",
         "prompt": [
-          "Compare the same smoke scenario before and after the reviewed edit. Read the rerun smoke package from input.smoke_evidence and require both baseline_smoke_evidence and rerun_smoke_evidence before comparing. Emit before and after run ids, history.md paths, artifact refs, expected behavior, actual outcomes, failure summaries, and outcome delta. Verify the rerun used explicit isolated WORKFLOW_RUNS_ROOT and did not create source-tree .workflow-runs artifacts. Return compared when the reviewed edit is ready for final implementation attack, needs_revision when evidence requires another analyzer-reviewed improvement pass, or blocked.",
+          "Compare the same smoke scenario before and after the reviewed edit. Read the rerun smoke package from input.smoke_evidence and require both baseline_smoke_evidence and rerun_smoke_evidence before comparing. Emit before and after run ids, history.md paths, artifact refs, expected behavior, actual outcomes, failure summaries, and outcome delta. Verify the rerun used explicit isolated WORKFLOW_RUNS_ROOT and did not create source-tree .workflow-runs artifacts. Return compared when the reviewed edit is ready for final implementation attack, needs_revision when evidence requires another analyzer-reviewed improvement pass as completed output; otherwise report a non-blocking stop.",
           "",
           "Input context:",
           "Approved workflow contract:",
@@ -314,7 +300,7 @@
       "input": {
         "role": "critic",
         "prompt": [
-          "Review the implemented workflow against the approved contract. Check that catalog description is useful for routing, workflow files/schemas exist, smoke evidence was collected with isolated WORKFLOW_RUNS_ROOT, analyzer findings cannot authorize edits directly, human-reviewed improvement approval guards edits, rerun comparison exists when reviewed edits were applied, validation was run or the blocker is explicit, and the implementation did not change runner engine behavior unnecessarily. Return approved, needs_revision, or blocked.",
+          "Review the implemented workflow against the approved contract. Check that catalog description is useful for routing, workflow files/schemas exist, smoke evidence was collected with isolated WORKFLOW_RUNS_ROOT, analyzer findings cannot authorize edits directly, human-reviewed improvement approval guards edits, rerun comparison exists when reviewed edits were applied, validation was run or the non-blocking stop is explicit, and the implementation did not change runner engine behavior unnecessarily. Return approved or needs_revision as completed output; otherwise report a non-blocking stop.",
           "",
           "Input context:",
           "Approved workflow contract:",

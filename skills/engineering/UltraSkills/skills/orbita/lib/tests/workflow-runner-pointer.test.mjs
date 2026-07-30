@@ -10,10 +10,12 @@ import {
   listPointerTransitions,
   movePointer,
   next,
+  reportStop,
   writeOutput,
 } from './helpers/orbita-production-api.mjs';
 import { registerWorkflowRunAtRoot } from '../persistence/run-state/workflow-runs.mjs';
 import { resolveRunPaths } from '../persistence/run-state/paths.mjs';
+import { projectPointerTransitions } from '../runner/pointer-transition-projection.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../..');
 const tempDir = mkdtempSync(path.join(tmpdir(), 'workflow-runner-pointer-'));
@@ -107,6 +109,7 @@ function snapshot(paths) {
   return {
     baton: JSON.parse(readFileSync(paths.batonPath, 'utf8')),
     history: readFileSync(paths.historyPath, 'utf8'),
+    authority: JSON.parse(readFileSync(paths.authorityPath, 'utf8')),
     index: JSON.parse(readFileSync(paths.runsIndexPath, 'utf8')).runs[paths.runId],
   };
 }
@@ -116,11 +119,126 @@ function rawRunFiles(paths) {
   return {
     baton: existsSync(paths.batonPath) ? readFileSync(paths.batonPath, 'utf8') : undefined,
     history: existsSync(paths.historyPath) ? readFileSync(paths.historyPath, 'utf8') : undefined,
+    authority: existsSync(paths.authorityPath) ? readFileSync(paths.authorityPath, 'utf8') : undefined,
     indexEntry: index.runs[paths.runId],
   };
 }
 
-test('runner pointer API lists adjacent transitions and moves pointer with retained-state acknowledgement', async () => {
+test('pointer projection follows current workflow branches and excludes stale downstream state', () => {
+  const workflow = {
+    name: 'pointer-current-branch',
+    version: 1,
+    start: 'prepare',
+    done: 'done',
+    steps: {
+      prepare: { name: 'Prepare', kind: 'worker', next: 'decide' },
+      decide: {
+        name: 'Decide',
+        kind: 'worker',
+        next: { match: '${{ output.route }}', cases: { left: 'left', right: 'right' } },
+      },
+      left: { name: 'Old branch', kind: 'worker', next: 'done' },
+      right: { name: 'Current branch', kind: 'worker', next: 'done' },
+      done: { name: 'Done', kind: 'done' },
+    },
+  };
+  const baton = {
+    cursor: 'right',
+    status: 'running',
+    state: {
+      artifacts: [],
+      results: [],
+      prepare: { outcome: 'ready' },
+      decide: { outcome: 'ready', route: 'right' },
+      left: { outcome: 'ready' },
+    },
+  };
+
+  const projected = projectPointerTransitions({ workflow, baton });
+
+  assert.deepEqual(projected.transitions.map((transition) => transition.to.cursor), ['decide', 'prepare']);
+  assert.equal(projected.transitions.some((transition) => transition.to.cursor === 'left'), false);
+});
+
+test('pointer projection handles resolved cycles using baton membership', () => {
+  const workflow = {
+    name: 'pointer-cycle',
+    version: 1,
+    start: 'a',
+    done: 'done',
+    steps: {
+      a: { name: 'A', kind: 'worker', next: 'b' },
+      b: { name: 'B', kind: 'worker', next: 'c' },
+      c: { name: 'C', kind: 'worker', next: 'a' },
+      done: { name: 'Done', kind: 'done' },
+    },
+  };
+  const baton = {
+    cursor: 'c',
+    status: 'running',
+    state: {
+      artifacts: [],
+      results: [],
+      a: { outcome: 'ready' },
+      b: { outcome: 'ready' },
+      c: { outcome: 'ready' },
+    },
+  };
+
+  const projected = projectPointerTransitions({ workflow, baton });
+
+  assert.deepEqual(projected.transitions.map((transition) => transition.to.cursor), ['b', 'a']);
+});
+
+test('pointer projection uses the runtime loop-limit exit and offers only state-bearing predecessors', () => {
+  const workflow = {
+    name: 'pointer-loop-limit',
+    version: 1,
+    start: 'implement',
+    done: 'done',
+    loopPolicies: {
+      implementation_review: {
+        steps: ['implement', 'review'],
+        entry: 'implement',
+        boundary: 'review',
+        maxIterations: 2,
+        onLimit: {
+          match: '${{ output.limit_reason }}',
+          cases: { hard: 'limit_reached', soft: 'done' },
+        },
+      },
+    },
+    steps: {
+      implement: { name: 'Implement', kind: 'worker', next: 'review' },
+      review: {
+        name: 'Review',
+        kind: 'worker',
+        next: { match: '${{ output.route }}', cases: { retry: 'implement', ready: 'done', limit_reached: 'limit_reached' } },
+      },
+      done: { name: 'Done', kind: 'done' },
+      limit_reached: { name: 'Limit reached', kind: 'done' },
+    },
+  };
+  const baton = {
+    cursor: 'limit_reached',
+    status: 'done',
+    state: {
+      artifacts: [],
+      results: [],
+      $loopProgress: { implementation_review: 2 },
+      implement: { outcome: 'ready' },
+      review: { outcome: 'ready', route: 'retry', limit_reason: 'hard' },
+      done: { outcome: 'ready' },
+    },
+  };
+
+  const projected = projectPointerTransitions({ workflow, baton });
+
+  assert.deepEqual(projected.transitions.map((transition) => transition.to.cursor), ['review', 'implement']);
+  assert.equal(projected.transitions.some((transition) => transition.to.cursor === 'done'), false);
+});
+
+test('runner pointer API moves to a state-bearing predecessor while preserving replaceable state', async () => {
   const run = await createClaimedRun('api-retained');
   await next({ ...run, userPrompt: 'keep prompt marker', now: new Date('2026-06-01T10:00:01.000Z') });
   await acceptCurrentWorkerOutput({ ...run, stepId: 'prepare', summary: 'prepared' });
@@ -130,20 +248,12 @@ test('runner pointer API lists adjacent transitions and moves pointer with retai
   const listed = await listPointerTransitions({ ...run, now: new Date('2026-06-01T10:03:00.000Z') });
   assert.equal(listed.current.cursor, 'review');
   assert.deepEqual(listed.transitions.map((transition) => [transition.direction, transition.to.cursor]), [['backward', 'prepare']]);
-  assert.equal(listed.transitions[0].retainedState.acknowledgementRequired, true);
-  assert.deepEqual(listed.transitions[0].retainedState.stepIds, ['prepare']);
   assert.doesNotMatch(JSON.stringify(listed), /agent-prepare|keep prompt marker|workflow-runner-token|history\.md|baton\.json/);
-
-  await assert.rejects(
-    () => movePointer({ ...run, transitionId: listed.transitions[0].id, now: new Date('2026-06-01T10:04:00.000Z') }),
-    /requires retained state acknowledgement/,
-  );
 
   const moved = await movePointer({
     ...run,
     transitionId: listed.transitions[0].id,
-    acknowledgeRetainedState: true,
-    now: new Date('2026-06-01T10:05:00.000Z'),
+    now: new Date('2026-06-01T10:04:00.000Z'),
   });
   const afterMove = snapshot(run.paths);
 
@@ -158,8 +268,17 @@ test('runner pointer API lists adjacent transitions and moves pointer with retai
   assert.match(afterMove.history.slice(beforeMove.history.length), /pointer move:/);
   assert.match(afterMove.history.slice(beforeMove.history.length), /target position id:/);
   assert.match(afterMove.history.slice(beforeMove.history.length), /state preserved: true/);
-  assert.match(afterMove.history.slice(beforeMove.history.length), /retained output acknowledgement: required/);
-  assert.equal(afterMove.index.status, 'needs_host_actions');
+  assert.equal(afterMove.authority.status, 'needs_host_actions');
+
+  await acceptCurrentWorkerOutput({ ...run, stepId: 'prepare', summary: 'prepared again', now: new Date('2026-06-01T10:05:00.000Z') });
+  assert.equal(snapshot(run.paths).baton.state.prepare.results[0].summary, 'prepared again');
+  const stopped = await reportStop({
+    ...run,
+    stepId: 'prepare',
+    json: JSON.stringify({ non_blocking_stop: { stop_id: '00000000-0000-4000-8000-000000000099', summary: 'Need a decision.', needed: 'Choose how to proceed.' } }),
+    now: new Date('2026-06-01T10:06:00.000Z'),
+  });
+  assert.equal(stopped.reported, true);
 });
 
 test('runner pointer API list is read-only for claimed runs without persisted state', async () => {
@@ -217,7 +336,6 @@ test('runner pointer API move does not initialize missing state on rejected move
     () => movePointer({
       ...run,
       transitionId: 'ptr_missing',
-      acknowledgeRetainedState: true,
       now: new Date('2026-06-01T10:01:00.000Z'),
     }),
     /missing baton/,
@@ -235,12 +353,12 @@ test('runner pointer API rejects stale transition ids and wrong leases without m
   await acceptCurrentWorkerOutput({ ...run, stepId: 'prepare', summary: 'prepared stale' });
   await continueRun({ ...run, now: new Date('2026-06-01T10:02:00.000Z') });
   const listed = await listPointerTransitions({ ...run, now: new Date('2026-06-01T10:03:00.000Z') });
-  await movePointer({ ...run, transitionId: listed.transitions[0].id, acknowledgeRetainedState: true, now: new Date('2026-06-01T10:04:00.000Z') });
+  await movePointer({ ...run, transitionId: listed.transitions[0].id, now: new Date('2026-06-01T10:04:00.000Z') });
   const beforeRejected = snapshot(run.paths);
 
   await assert.rejects(
-    () => movePointer({ ...run, transitionId: listed.transitions[0].id, acknowledgeRetainedState: true, now: new Date('2026-06-01T10:05:00.000Z') }),
-    /stale, non-adjacent, or not observed/,
+    () => movePointer({ ...run, transitionId: listed.transitions[0].id, now: new Date('2026-06-01T10:05:00.000Z') }),
+    /stale, unavailable, or not a state-bearing predecessor/,
   );
   const afterStaleRejected = snapshot(run.paths);
   assert.deepEqual(afterStaleRejected.baton, beforeRejected.baton);
@@ -259,7 +377,7 @@ test('runner pointer API rejects stale transition ids and wrong leases without m
   assert.deepEqual(snapshot(run.paths), afterStaleRejected);
 });
 
-test('runner pointer API allows rollback from terminal cursors and reports parallel cursors as unsupported', async () => {
+test('runner pointer API allows rollback from terminal cursors', async () => {
   const terminalRun = await createClaimedRun('api-terminal');
   await next({ ...terminalRun, now: new Date('2026-06-01T10:00:01.000Z') });
   await acceptCurrentWorkerOutput({ ...terminalRun, stepId: 'prepare', summary: 'prepared terminal' });
@@ -270,42 +388,22 @@ test('runner pointer API allows rollback from terminal cursors and reports paral
   await continueRun({ ...terminalRun, now: new Date('2026-06-01T10:04:00.000Z') });
   const terminal = await listPointerTransitions({ ...terminalRun, now: new Date('2026-06-01T10:05:00.000Z') });
   assert.equal(terminal.unsupported, undefined);
-  assert.deepEqual(terminal.transitions.map((transition) => [transition.direction, transition.to.cursor]), [['backward', 'finalize']]);
-  assert.equal(terminal.transitions[0].retainedState.acknowledgementRequired, true);
-  assert.deepEqual(terminal.transitions[0].retainedState.stepIds, ['finalize']);
+  assert.deepEqual(terminal.transitions.map((transition) => [transition.direction, transition.to.cursor]), [
+    ['backward', 'finalize'],
+    ['backward', 'review'],
+    ['backward', 'prepare'],
+  ]);
+  const prepareMove = terminal.transitions.find((transition) => transition.to.cursor === 'prepare');
+  assert.ok(prepareMove);
   const terminalMoved = await movePointer({
     ...terminalRun,
-    transitionId: terminal.transitions[0].id,
-    acknowledgeRetainedState: true,
+    transitionId: prepareMove.id,
     now: new Date('2026-06-01T10:06:00.000Z'),
   });
-  assert.equal(terminalMoved.current.cursor, 'finalize');
+  assert.equal(terminalMoved.current.cursor, 'prepare');
   assert.equal(terminalMoved.current.status, 'running');
-  assert.equal(snapshot(terminalRun.paths).index.status, 'needs_host_actions');
+  assert.equal(snapshot(terminalRun.paths).authority.status, 'needs_host_actions');
 
-  const parallelWorkflow = structuredClone(workflowDoc);
-  parallelWorkflow.steps.prepare.next = ['branch_a', 'branch_b'];
-  parallelWorkflow.steps.branch_a = {
-    name: 'Branch A',
-    kind: 'worker',
-    input: { prompt: 'Branch A.' },
-    output: { template: 'output.md' },
-    next: 'review',
-  };
-  parallelWorkflow.steps.branch_b = {
-    name: 'Branch B',
-    kind: 'worker',
-    input: { prompt: 'Branch B.' },
-    output: { template: 'output.md' },
-    next: 'review',
-  };
-  const parallelRun = await createClaimedRun('api-parallel', parallelWorkflow);
-  await next({ ...parallelRun, now: new Date('2026-06-01T10:00:01.000Z') });
-  await acceptCurrentWorkerOutput({ ...parallelRun, stepId: 'prepare', summary: 'prepared parallel' });
-  await continueRun({ ...parallelRun, now: new Date('2026-06-01T10:02:00.000Z') });
-  const parallel = await listPointerTransitions({ ...parallelRun, now: new Date('2026-06-01T10:03:00.000Z') });
-  assert.equal(parallel.unsupported.reason, 'parallel_cursor_unsupported');
-  assert.deepEqual(parallel.transitions, []);
 });
 
 

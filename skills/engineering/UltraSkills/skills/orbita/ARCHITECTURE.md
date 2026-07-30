@@ -4,7 +4,7 @@
 
 This document is the architecture contract for the Orbita workflow-runner
 runtime. It records layer ownership, dependency direction, retired surfaces,
-conditional helper/schema zones, matrix v1, and review gates for issue #194.
+conditional helper/schema zones, shard/fanout control steps, and review gates.
 
 This contract covers `skills/orbita/**`. It does not define the dashboard visual
 design; that remains in `DESIGN.md`.
@@ -25,24 +25,34 @@ current runtime architecture. Orchestrator debug notes and worker binding are
 bounded `continue` side effects; they do not navigate separately and do not
 accept worker output. Obsolete backward-compatibility surfaces do not.
 
+`instructions --step-id` dispatches from the current effective host action,
+not from a prompt cached on an executable step. A current `run_worker` request
+returns Template-compiled worker instructions. A current
+`wait_for_approval` request returns the same dedicated approval projection used
+by `next` and `continue`. A request superseded by an unresolved non-blocking
+stop, a terminal response, or a missing/stale current request has no loadable
+step instructions and must fail before lease renewal.
+
 `listPointerTransitions` and `movePointer` are runner API control-plane recovery
-surfaces for repositioning only the current baton pointer along already observed
-history. Their shell-facing CLI modes are `list-pointer-transitions` and
+surfaces for repositioning only the current baton pointer among state-bearing
+workflow predecessors. Their shell-facing CLI modes are `list-pointer-transitions` and
 `move-pointer`. Both require an active run lease. `listPointerTransitions` is a
 logical read: it may use the run-state boundary for consistency, but it must not
-initialize missing run state, append history, update the run index, or mutate the
+initialize missing run state, append history, renew authority, or mutate the
 baton/current pointer. It is not an unleased public read because it exposes
-pointer/history and retained-output recovery metadata. `movePointer` mutates only
+bounded pointer recovery metadata. `movePointer` mutates only
 baton cursor/status through the existing lease, lock, validation, durable writer,
-history, and run-index path. Neither surface rolls back, prunes, rewrites, or cleans
+history, and per-run authority path. Neither surface rolls back, prunes, rewrites, or cleans
 `baton.state`, accepted outputs, artifacts/results, worker bindings, prompt
-markers, attempts, or existing history. The first supported slice is limited to
-one adjacent observed transition edge from the current pointer/status. Terminal
+markers, attempts, or existing history. A move may target any state-bearing
+predecessor that reaches the current cursor through transitions resolved from
+the current workflow and baton state; it must never offer a downstream or
+state-less workflow step. Terminal
 single-cursor positions, including a completed `done` run, may move backward to
-an observed non-terminal step; terminal status must not by itself make pointer
-recovery unsupported. Parallel/array cursors remain explicitly unsupported.
-Targets with retained accepted output require visible retained-state disclosure
-and explicit acknowledgement before mutation.
+a state-bearing non-terminal predecessor; terminal status must not by itself make pointer
+recovery unsupported. Array cursors are rejected by the baton schema and cannot
+enter pointer recovery.
+Pointer moves preserve baton state without an extra acknowledgement gate.
 
 Retired surfaces:
 
@@ -171,6 +181,23 @@ Owner: `lib/use-cases/runtime/**` and `lib/runtime/**`
 Runtime helpers are deterministic and IO-free. They operate over supplied
 values, entities, DTOs, and supplied schema/path facts.
 
+Executable-step records are neutral: they identify the normal step action and
+execution context but do not carry `compiledPrompt` or any other rendered text.
+One host-work projection combines each executable record with runner control
+state to select the effective host action before rendering. An unresolved stop
+for that request projects `resolve_non_blocking_stop`; otherwise the normal
+`run_worker`, `wait_for_approval`, or terminal path remains effective.
+
+Template owns worker instructions and is reachable only from the effective
+`run_worker` branch. A colocated approval contract/projection owner selects a
+producer-authored summary, ordered safe artifact metadata, and an optional
+route-applicable current verdict, then renders the bounded human gate. Stop and
+terminal projections remain separate from both Template and approval
+selection. Removing either the host-work projection or approval owner would
+duplicate effective-action selection or the closed approval contract across
+`next`, `continue`, `instructions`, and output acceptance, so both zones pass
+the deletion test without requiring a renderer hierarchy.
+
 Runtime helpers must not import:
 
 - `node:fs`
@@ -178,24 +205,25 @@ Runtime helpers must not import:
 - persistence modules
 - workflow-resource loaders
 
+The host-work projection must additionally not import entrypoints, Template,
+command builders, or output-schema loaders. Approval, stop, and terminal
+projection must not import Template or output-schema loaders. Entrypoints must
+not dispatch renderer internals.
+
 Output validation in runtime helpers consumes loaded schemas and explicit path
 facts. Schema loading, realpath probing, symlink checks, and artifact path facts
 belong to adapters or file-contract owners.
 
 Pointer transition projection belongs under runner-owned runtime/use-case
-internals, not the dashboard. It derives adjacent observed transition edges from
-persisted baton plus durable history and must be shared by list and move
+internals, not the dashboard. It derives state-bearing predecessors by resolving
+workflow transitions against the persisted baton and must be shared by list and move
 validation so inspect-before-mutate output cannot drift from mutation rules.
-Retained accepted-output detection must use the same per-step accepted-output
-surface in `baton.state[stepId]` that `continue` uses; if extracted, it remains a
-small runner-owned helper with tests for current `continue` reuse semantics.
 
-Recoverable blocker helpers under `lib/runtime/**` own public shaping and
-redaction of blocker/resolution records. They must receive path facts from the
+Non-blocking stop helpers under `lib/runtime/**` own public shaping and
+redaction of stop/resolution records. They must receive path facts from the
 caller and must not discover workflow-run storage through persistence imports.
 
-Matrix runtime helpers own IO-free matrix request projection, unit output
-application, retry/block accounting, and owner join readiness. They may consume
+Shard runtime helpers own IO-free activation projection, shard output application, bounded batching, and final-worker readiness. They may consume
 Workflow, Step, Baton, file contracts, loaded output schemas, and supplied path
 facts. They must not import persistence, entrypoints, dashboard code, filesystem
 APIs, workflow-resource loaders, host sessions, transcripts, private paths, or
@@ -211,7 +239,7 @@ Persistence owns filesystem and durable-state integration:
 - run-state records
 - locks and leases
 - durable commits
-- run indexes
+- per-run authority records and the global run-catalog projection
 - path safety facts
 - current migration behavior
 - schema loading for persisted/file records
@@ -235,15 +263,36 @@ owner.
 A file-contract/schema zone must own real contracts, not act as a dumping ground
 for constants or pass-through wrappers.
 
-Matrix v1 adds two durable file-contract surfaces:
+Shard execution adds two durable file-contract surfaces:
 
-- `workflow-document.json` owns the JSON authoring contract for a first-class
-  matrix control step.
-- Baton schema owns `state.matrix` durable progress records.
+- `workflow-document.json` owns the first-class `kind: "shard"` authoring contract.
+- Baton schema owns `state.shards` activation snapshots and bounded output references.
 
-These contracts are shared across validation, runtime, persistence validation,
-tests, and documentation. They must stay narrow and must not become a generic
-schema dumping ground.
+These contracts are shared across validation, runtime, persistence validation, tests, and documentation.
+
+Approval steps use a runner-owned, typed contract rather than a
+workflow-authored prompt/output-schema pair. `workflow-document.json` owns the
+approval input projection: required path-only `summary`, optional ordered
+path-only `artifacts`, and optional `verdict` selectors for outcome, concise
+summary, and actionable findings with a required route-applicability
+`include_when` predicate. Startup semantic validation proves selector type and
+cardinality plus guaranteed producer execution before the approval gate. The
+dominance check uses the complete executable route graph: static and match-case
+edges, schema-expanded dynamic-target edges, and the retarget edges that each
+`loopPolicies.onLimit` can introduce. Each selected producer must be reachable
+from workflow start, and removing it from that graph must make the gate
+unreachable. Approval routing either covers both `output.approval` values or
+declares a static `onReject` revision target while `next` owns the approved
+route. Validation also proves producer -> critic -> gate/direct-correction
+topology before a verdict selector is accepted.
+
+Approval steps declare no output schema. The accepted decision is the closed
+runner-owned record `{ approval: "approved" | "rejected", feedback?: string }`;
+`feedback`, when present, is bounded and non-blank, and additional properties
+are invalid. The runner host-response schema owns action-specific negative
+fields and the terminal split: approval requests expose no output-schema or
+worker-reuse metadata, while `done` requires one top-level baton and forbids
+requests.
 
 ### Boundary Checks
 
@@ -271,12 +320,15 @@ Checks should cover:
 - top-level use cases importing filesystem/path/persistence
 - top-level use cases importing catalog readers
 - runtime helpers importing filesystem/path/persistence
+- host-work projection importing persistence, entrypoints, Node IO, Template,
+  command builders, or output-schema loaders
+- approval/stop/terminal projection importing Template or output-schema loaders
+- entrypoints dispatching renderer internals
 - persistence importing use cases
 - persistence importing entity-owned Baton schema after migration
 - run-state persistence importing startup validation
 - runner runtime importing catalog/config discovery
-- concrete matrix runtime/helper imports that violate the matrix dependency
-  rules below, once those source surfaces exist
+- concrete shard runtime/helper imports that violate the dependency rules below
 
 ## Conditional Zones
 
@@ -304,252 +356,454 @@ IO-free runtime helpers, and supplied contracts. Persistence loads workflow
 resources, schemas, run-state records, leases, and path facts, then passes plain
 values or contracts across the boundary.
 
+Runtime execution is action-first. The runner resolves neutral executable work,
+projects the effective host action from that work plus Baton stop state, renders
+only the selected consumer, validates the complete public response, and only
+then persists `currentRequests` or Baton changes. This render-before-persist
+order keeps failed rendering from committing a cursor/request set that no host
+can execute. Worker/fanout/shard rendering still converges on Template through
+`run_worker`; approval, unresolved stop, and terminal paths never enter
+Template.
+
+Approval projection evaluates `include_when` against the current producer
+output before selecting any critic fields. A false predicate omits the stored
+verdict entirely; a true predicate may select only the current critic outcome,
+concise summary, and actionable findings. Prior approval state is not a
+freshness signal. Artifact metadata keeps declared order, is deduplicated after
+existing containment/realpath/symlink checks, renders absolute links once, and
+never causes artifact body reads.
+
 Entrypoints format current public output and errors. They do not reach into
 runtime helper internals to assemble behavior.
 
+Mutating runner commands may carry one command-scoped operation context after
+the pre-lock and under-lock authority checks. Its persisted-state snapshot must
+be read inside the active per-run lock scope, may be passed into the durable
+writer, and is replaced by the validated snapshot returned after each write.
+Snapshots are deeply frozen. After a same-scope commit, the writer builds the
+replacement from the already validated transition and exact target bytes rather
+than rereading and revalidating the complete aggregate. The snapshot is never
+cached across commands. A pending durable commit takes
+precedence over a supplied snapshot, and any direct history append invalidates
+the snapshot before a later aggregate write. This optimization does not change
+the split-file topology, recovery order, fsync/atomic-rename guarantees, lease
+revalidation, or path/symlink safety.
+
+Durable aggregate writes use the v2 append transaction for `history.md`. The
+atomically written pending record contains a unique transaction id, the base
+file existence and byte size, the bounded entry text and its SHA-256 hash, and
+the requested baton/current-request side effects. It must not embed or rewrite
+the complete history. Under the per-run lock, recovery accepts only an unchanged
+base, an exact byte prefix of the pending entry, or the complete pending entry;
+it completes and fsyncs a partial append, recognizes a complete append without
+duplicating it, and fails closed on any unrelated tail, truncation, or invalid
+hash. Baton and current-request files retain their atomic-write behavior. The
+legacy v1 full-history pending format remains recoverable for commits already in
+flight, but new commits must use v2.
+
+The first aggregate commit uses that same pending record as its recovery
+authority while `history.md`, `baton.json`, and current requests are all absent.
+If journal application fails after any pending/history/baton/current-request
+stage, rollback restores those absent-file snapshots but retains the journal,
+the run's `running` authority, and the original hashed lease. Failure-history
+recording must not consume that journal or clear the lease. A retry with the
+same explicit token recovers the retained transaction before normal execution,
+materializes all three durable targets once, and removes the journal. Failures
+before a pending journal exists have no partial durable commit to recover and
+may use the normal new-run failure cleanup.
+
+`history.md` remains the canonical human-facing projection. Commands that only
+need baton/current requests carry a file reference plus byte size and do not
+load the history body. Full history reads are reserved for behavior that
+actually projects history, such as pointer inspection/mutation and debug-note
+deduplication. No history body or file handle is cached across commands.
+
+`.workflow-runner/authority.json` is canonical for one run's absolute workflow
+binding, claim context, lifecycle/task projection, and token-hash lease record.
+Every runner command still validates authority once before taking the per-run
+lock and again from a fresh record while holding that lock. Matching-token
+renewal preserves the token epoch; an explicit tokenless takeover of a stale or
+occupied lease rotates the hash and increments the epoch. Raw lease tokens are
+never persisted.
+
+`runs.json` is the global discovery/catalog projection, not an authority source
+once a per-run record exists. Warm `next`, `instructions`, `write-output`,
+`continue`, and pointer mutation read and atomically renew only the small per-run
+record; they do not parse, lock, or rewrite the global catalog. Registration,
+explicit claim/heartbeat, and deletion may synchronize the catalog projection.
+List and dashboard readers start from catalog ids and overlay canonical per-run
+records with bounded IO concurrency. A legacy run without `authority.json` may
+fall back to its validated v1 catalog entry; its first successful mutating
+runner/claim operation writes the per-run record. Once that file exists, a
+missing, conflicting, corrupt, or unsafe authority record must not silently fall
+back to the catalog.
+
 Pointer recovery follows the same runtime flow. `listPointerTransitions` checks
 the active lease, reads existing persisted run state, builds the shared pointer
-transition projection, and returns bounded transition and retained-state metadata
-without initializing missing run files, appending history, updating the run index,
+transition projection, and returns bounded transition metadata
+without initializing missing run files, appending history, renewing authority,
 or mutating baton/current pointer state. `movePointer` checks the active lease
 before and inside the run-state lock, rebuilds the projection while locked,
-validates the requested adjacent edge and retained-state acknowledgement, updates only baton
+validates the requested state-resolved target, updates only baton
 cursor/status, validates persisted state, appends bounded pointer-move history,
-and updates run index through the durable writer path.
+and renews the canonical per-run authority record.
 
-## Matrix Workflow Control Step
+## Fanout Owner Step
 
-Matrix v1 is a first-class workflow control step for repeated worker units. It
-exists to fan out bounded worker work while preserving a simple top-level
-workflow cursor.
+`kind: "fanout"` is the first-class control step for a fixed table of named
+worker branches. Authoring selects branches through `input.branches`: a static
+branch-id array, one schema-covered input expression, or `first_of` expressions
+for selective rework fallback. Each branch is a nested worker template under
+`branches.<branch-id>`; branch ids must be globally collision-safe because
+accepted branch outputs live at `baton.state[branchId]`.
 
-The authoring shape is JSON only. A matrix step uses `kind: "matrix"` and owns:
+The top-level cursor remains the fanout owner for the whole activation. Durable
+phase and request membership live under `baton.state.fanouts[ownerStepId]` with
+the phases `branches`, `owner`, and `completed`. The runner first renders
+synthetic branch requests, applies only the current accepted branch outputs,
+then renders the genuine owner worker. The owner output is applied through the
+normal step output and `next` path. Phase recovery must use this durable record;
+request-id parsing, arbitrary state scanning, dispatch workers, and separate
+join workers are not valid control flow.
 
-- one source, either a static array or an existing runner-supported selector;
-- one stable unit id rule;
-- optional bounded `max_parallel`;
-- optional `max_attempts`, defaulting to one attempt when omitted;
-- one worker template with normal role, input, and output contract behavior;
-- one normal `next` transition used only after join.
+Owner prompt projection includes accepted output only for branches selected in
+the current activation. Stale output for unselected branches may remain durable
+for audit/history purposes but must not enter the owner prompt. Fanout is a
+named workflow-branch primitive; shard is the homogeneous value-partition primitive.
 
-Matrix v1 must reject optional units, fail-fast/cancel-in-flight policy, branch
-tables, arbitrary per-item subgraphs, nested matrix, recursive matrix, generated
-workflow step ids, and distributed child runs. TOML examples from planning are
-discussion-only and are not an implementation format.
+## Shard Workflow Step
 
-### Matrix Cursor And State
+`kind: "shard"` is the first-class generic control step for applying one worker
+template to a non-empty array of values in parallel. The top-level `input` and
+`output` belong to the genuine final worker represented by the shard step;
+`worker` is the nested template for parallel shard requests.
 
-While matrix units are active, `baton.cursor` remains exactly the owner matrix
-workflow step id. Synthetic unit ids are host request addresses only. They must
-not be written into `workflow.steps`, top-level cursor arrays, pointer recovery
-targets, or history as independent workflow positions.
+`input.shards` accepts either a non-empty literal JSON array or one
+schema-covered `input.*` expression that resolves to a non-empty array.
+Elements may be arbitrary JSON values. Numeric shard-count shorthand, authored
+element ids, branch tables, nested subgraphs, and compatibility aliases are not
+part of the contract.
 
-Matrix durable progress lives under `baton.state.matrix`, keyed by owner
-workflow step id. A matrix owner record owns:
+During one activation, the runtime resolves `input.shards` exactly once and
+stores the values in order under `baton.state.shards[parentStepId]`.
+`baton.cursor` remains the shard step throughout the `shards`, `worker`, and
+`completed` phases. Synthetic request ids are activation/index addresses only;
+they never become workflow step ids or pointer-recovery targets.
 
-- owner step id;
-- source identity or fingerprint;
-- aggregate status;
-- unit records;
-- accepted output references;
-- blocker or retry-exhaustion records;
-- recomputable join proof.
+`max_parallel` bounds each current request batch. Accepted worker output remains
+once under its synthetic request id. Shard control state stores only a bounded
+`output_ref`, request id, index, and status; it never duplicates full output,
+prompt, transcript, session, path, token, or host lifecycle data.
 
-Unit records own:
+Each shard worker receives the normal prompt interpolation context:
 
-- safe unique unit id;
-- index or stable order when needed for rendering;
-- synthetic request id;
-- status;
-- attempt count and retry budget;
-- bounded safe item context;
-- accepted output reference;
-- blocker or retry reason.
+- `${{ shard.value }}`
+- `${{ shard.index }}`
+- `${{ shard.total }}`
+- nested paths such as `${{ shard.value.name }}`
 
-Source expansion is immutable after durable initialization for the owner/source
-fingerprint. Later source re-evaluation must not erase or rewrite in-flight
-progress. Restart and `continue --only-instructions` must rerender current unit
-requests from durable matrix state, not by reconstructing progress from workflow
-source, generated filenames, host memory, worker prose, or artifact directories.
+These expressions use the same interpolation rendering rules as `input.*`.
+The runtime does not append shard values, JSON context, request metadata, or
+control instructions to the worker prompt. Only explicitly authored
+interpolation reveals a value.
 
-`baton.state.shards` remains the existing review-sharding compatibility surface.
-Matrix v1 must not silently reinterpret, rename, migrate, or import
-review-sharding policy as the general matrix source of truth. Any unification or
-deletion of `state.shards` requires a separate architecture decision.
+After every shard request is accepted, the runtime renders the genuine worker
+represented by the shard step itself. Its schema-valid output follows the normal
+`next` transition. There is no dispatch step, aggregation section, deterministic
+completion output, or separate completion worker.
 
-### Matrix Current Requests
+## Non-blocking Stops
 
-Runtime response projection renders `run_worker` requests for eligible matrix
-units only while the owner matrix step is the current cursor. Current requests
-must include a synthetic request id, `ownerStepId`, generated runner commands,
-and bounded public matrix context. They must not expose raw item payloads by
-default, hidden prompts, transcripts, private paths, output paths, session
-registries, lifecycle internals, standalone lease/token fields, or token-bearing
-internals outside generated commands.
-
-`max_parallel` bounds how many pending/retryable units are current at once when
-configured. Accepted, blocked, and retry-exhausted units are not rendered as
-normal current work.
-
-`instructions --step-id <synthetic-unit-id>` and `write-output --step-id
-<synthetic-unit-id>` are valid only when the synthetic id is present in the
-current durable request set for the current owner cursor. Stale owner, stale
-unit, wrong owner/unit, and unsafe request ids must fail with the existing
-stale-current-request posture.
-
-### Matrix Output And Join
-
-`write-output` remains the only accepted-output path. Unit output is validated
-through current request membership, the matrix worker template output schema,
-artifact path rules, debug-summary path rules, and retry/block accounting.
-
-Matrix v1 uses runner-owned accepted-output metadata as the unit identity proof:
-owner step id, unit id, request id, worker output, artifact/result metadata, and
-attempt information. It must not require every worker output schema to add
-matrix identity fields.
-
-The owner matrix step transitions only after runner-computed join proof shows
-complete required-unit coverage and no required missing, blocked, retry-exhausted,
-unsafe, or mismatched unit. Join proof must be recomputable from durable matrix
-records and accepted output references. Worker prose, output filenames, hidden
-host sessions, raw transcripts, and artifact directory scans are not completion
-proof.
-
-The owner aggregate output may expose join proof plus accepted output references
-or bounded summaries. Full unit outputs must not be injected into downstream
-prompts by default; large or sensitive output should stay behind artifact
-references or explicit summaries.
-
-## Recoverable Worker Blockers
-
-`baton.recoverableWorkerBlockers` is runner-owned durable recovery state. It is
-keyed by workflow step id and stores only public, bounded blocker and resolution
+`baton.nonBlockingStops` is runner-owned durable control-plane state. It is
+keyed by active request id and stores only public, bounded stop and resolution
 records. It must not contain transcripts, hidden prompts, lease tokens, raw
-worker/approval outputs, private workflow-run paths, or arbitrary local paths.
+worker/approval outputs, private workflow-run paths, arbitrary local paths,
+credential assignments, or recognizable access keys. Public stop/resolution
+text uses a bounded sanitizer that covers absolute, home-relative,
+traversal-relative, and `file://` path forms before persistence or projection.
 
 Lifecycle:
 
-- `write-output` validates the current host output and persists a sanitized
-  temporary value in `baton.state[stepId]`.
-- `continue` converts a blocked worker/approval output into
-  `recoverableWorkerBlockers[stepId]`, removes the blocked output from normal
-  baton state, keeps the run `running`, and asks the host to resolve the
-  blocker.
-- `write-output` for `resolve_worker_blocker` persists a sanitized resolution
-  value in `baton.state[stepId]`.
-- `continue` moves the sanitized resolution into the existing recoverable
-  blocker entry, renders the same step again with resolution context, and clears
-  the recoverable blocker only after that step emits normal accepted output.
+- `write-output` accepts only schema-valid completed step output.
+- After safe automatic recovery is exhausted, `report-stop` persists a
+  sanitized `non_blocking_stop` record without completing the request or
+  advancing the cursor. Every new stop carries a worker-generated UUID v4
+  `stop_id`. Repeating the exact report with the same id is idempotent;
+  conflicting reuse is rejected. A delayed report for a resolved id cannot
+  erase its resolution, while a genuinely new stop must use a new id.
+- `continue` projects an unresolved record as a
+  `resolve_non_blocking_stop` host action. Completed siblings in fanout/shard
+  batches remain accepted while the stopped request stays active. Projection
+  happens before normal consumer selection, so the matching worker or approval
+  renderer is not called while its stop is unresolved.
+- `resolve-stop` requires the exact current `stop_id` and persists the bounded
+  orchestrator/user resolution on that control record. Exact retries are
+  idempotent; conflicting retries and stale resolutions for an older stop are
+  rejected without mutation.
+- `continue` renders the same request again with resolution context and the
+  preferred worker hint when available. Approval recovery receives the same
+  bounded resolved context without becoming a Template path. The record is
+  cleared only after that request submits normal completed output through
+  `write-output`.
 
-The final runner statuses remain `needs_host_actions` and `done`; a recoverable
-blocker is a host-action pause, not a terminal runner status.
+Managed history records only the stop id for report/resolve lifecycle events;
+it never copies the free-text stop or resolution fields. Those bounded fields
+live only in the active Baton control record and are deleted with that record
+after normal completed output is accepted.
+
+The final runner statuses remain `needs_host_actions` and `done`. A non-blocking
+stop is a host-action pause, never a step outcome, transition value, or terminal
+runner status.
 
 ## Dashboard Observer Architecture
 
-The Orbita dashboard is a read-only observation surface over durable
-`workflow-runner` run state. It extends the adapter side of Orbita; it does not
-join the runner control protocol and does not become another host adapter.
+The Orbita dashboard is a read-only observer over durable `workflow-runner` run
+state. It is one small modular monolith deployed as a single TanStack Start
+application: Vite builds the React application and Nitro's Bun preset owns the
+only dashboard HTTP process. The dashboard is not a runner host adapter, a
+durable cache, or a control-plane participant.
 
-`skills/orbita/DESIGN.md` is the product/design input for the board, card,
-drawer, lane, mini-map, and no-control UI rules. This architecture section owns
-the backend/UI boundary that makes those design rules safe.
+`skills/orbita/DESIGN.md` owns the approved board, card, detail, focus,
+responsive, and motion laws. `lib/dashboard/CONTEXT.md` owns local placement and
+dependency rules. This section records the stable product architecture and
+routes readers to those local contracts.
 
-Target shape:
+Target request and dependency shape:
 
 ```text
-run-state files -> observer reader -> safe projection -> dashboard API/events -> browser UI
+durable run files
+  -> observer read model (server only, ephemeral)
+  -> safe projection + exposure policy (server only)
+  -> versioned contracts
+  -> TanStack Start GET routes / invalidation SSE
+  -> React Query + browser view model
+  -> five-lane React board
 ```
 
-Intended source zones:
+There is no second API daemon, custom static server, generic repository port,
+or mixed client/server dashboard barrel. The concrete read-only observer and
+the versioned DTO boundary are the only justified seams.
 
-- `lib/dashboard/server/**` owns the local daemon/API shell, static UI serving,
-  SSE event stream, file-watch or polling loop, restart rebuild, and degraded
-  read isolation.
-- `lib/dashboard/projection/**` owns safe dashboard read models, lane
-  classification, history excerpt policy, workflow mini-map projection, and
-  redaction policy.
-- `lib/dashboard/contracts/**` owns browser-visible DTO schemas and examples
-  for list, detail, event, degraded diagnostic, artifact summary, cursor chip,
-  and mini-map surfaces.
-- `lib/dashboard/ui/**` owns browser rendering against those DTOs only.
+### Dashboard Source Zones
 
-If these zones become substantial, add `lib/dashboard/CONTEXT.md` in the same
-slice to record local ownership and forbidden dependencies. Do not create that
-context file for a placeholder-only or documentation-only change.
+- `lib/dashboard/contracts/**` owns strict runtime schemas, inferred
+  browser-safe types, schema versions, the five lane ids/order, public error and
+  invalidation enums, identifier bounds, `PublicDisplayText`, and adversarial
+  contract fixtures. It imports no dashboard implementation or Node-only code.
+- `lib/dashboard/projection/**` owns lane classification, source-specific
+  exposure policy, fixed public diagnostics, cursor cardinality enforcement,
+  safe summary/detail projection, authored workflow pages, bounded managed
+  history, step-path reconstruction, step-scoped Activity/Logs, and artifact
+  facts. It is server-only even when helpers are pure.
+- `lib/dashboard/observer/**` owns read-only durable adapters, bounded-concurrency
+  reads, per-run failure isolation, the process-local `DashboardReadModel`,
+  watcher/poll reconciliation, immutable snapshot replacement, freshness
+  lifecycle, invalidation subscriptions, and shutdown cleanup.
+- `lib/dashboard/ui/**` is the TanStack Start application root. Its explicit
+  `.server.ts` composition and API route files may reach the observer; its
+  client-reachable routes, features, components, hooks, and primitives may
+  import only browser-safe contracts and browser libraries.
+- `lib/entrypoints/**` does not export, wrap, or serve dashboard APIs. Root Bun
+  scripts are the supported development/build/start/check surface.
 
-### Dashboard Bounded Contexts
+These zones are real responsibility owners, not folder ceremony: deleting
+`contracts` duplicates the cross-runtime schema; deleting `projection` smears
+classification/disclosure into readers and routes; deleting `observer` smears
+durable reads and lifecycle into transport; deleting `ui` removes the product
+and Start deployment. Do not add a generic service/repository/shared-utility
+zone for one implementation.
 
-Dashboard backend is an observer-owned adapter context. It may read durable
-workflow-runner state through persistence/run-state adapters or explicit
-read-only filesystem adapters, then project the result into dashboard DTOs. It
-must isolate per-run read/parse failures as degraded dashboard records and must
-not persist those degraded records into workflow state.
+### Dashboard Records and Authority
 
 Dashboard projection is a read-model context. It owns allowlisted DTOs and
-classification policy for `Waiting for user`, `Worker running`, `Blocked`,
+classification policy for `Waiting for user`, `Worker running`, `Needs help`,
 `Degraded`, and `Done`. It may expose bounded, redacted history excerpts and
 artifact metadata, but it must not expose raw baton, raw history, compiled
 instructions, private prompts, token-bearing commands, hidden transcripts,
 instruction storage paths, preferred worker agent ids, worker binding flags, or
 unnecessary host control-plane metadata.
 
-Dashboard UI is a browser-only inspection context. It consumes safe DTOs from
-the daemon API/event surface and follows `DESIGN.md`. It must not read
-`~/.orbita` directly, infer runner state from filesystem paths, include
-drag/drop movement, or show controls that resemble `next`, `continue`,
-`write-output`, retry, repair, or manual lane movement.
+Durable run files remain the only authority. `SnapshotEnvelope`,
+`ObserverFreshnessDTO`, `RunSummaryDTO`, `RunLightDetailDTO`, workflow/history/
+artifact pages, `InvalidationEvent`, `PublicDisplayText`, and the browser board
+store are records/read models, not domain entities. `DashboardReadModel` has
+process identity and lifecycle but is ephemeral, immutable per published
+revision, fully rebuildable, and forbidden from writing cache data into run
+directories.
 
-### Dashboard Relationships
+Run inspection introduces no durable execution identity. The selected workflow
+`stepId` is only a browser/read-model key. The ordered path, Activity, managed
+debug-summary logs, and artifact ownership are derived from the existing Baton,
+managed history, workflow document, and artifact records. Fanout/shard request
+ids remain request addresses and may be mapped to their owning workflow step for
+display; they never become workflow steps or new persisted entities. Workflow is
+run-wide; selecting a step scopes only Activity, Logs, and Artifacts.
+
+The projection exposes exactly five observer lanes in stable order:
+
+1. `waiting_for_user`
+2. `worker_running`
+3. `needs_help`
+4. `degraded`
+5. `done`
+
+`Degraded` means observer/read health and is never persisted as workflow state.
+Current cursor cardinality is `0..1`. The DTO may retain an array shape, but a
+projection with more than one current step is an explicit bounded unsupported/
+degraded result, never fabricated fanout.
+
+All browser-visible prose must be produced by exposure policy version `2` for
+one of the implemented source classes: run title/summary, workflow identity,
+step id, artifact id/summary, result summary/ref, or history line. The policy
+normalizes with NFKC, replaces control characters with spaces, collapses
+whitespace, applies the source's 120/160/240-code-point ceiling, and omits the
+value when it matches an absolute path, secret/token/hash shape, runner/shell
+command, private-instruction marker, prompt, or transcript. The shared
+`PublicDisplayText` schema then enforces non-empty text with a maximum length of
+240. New prose source classes default to omission. Identifiers/enums use their
+dedicated bounded schemas; raw durable records and raw exception messages never
+cross the route boundary. The 1.5 MiB snapshot and 64 KiB detail response caps
+are the implemented aggregate UTF-8 byte boundaries; there is no separate
+per-field byte-limit contract.
+
+### Versioned HTTP and Reconciliation Contract
+
+The Start application exposes the same-origin v2 GET surface:
+
+- `/api/dashboard/v2/runs` and `/api/dashboard/v2/runs/:runId` return the
+  validated summary snapshot and light run detail.
+- `/api/dashboard/v2/runs/:runId/workflow` and `traversal` return the authored
+  graph and current ordered step path.
+- `/api/dashboard/v2/runs/:runId/activity`, `logs`, and `artifacts` require one
+  validated existing workflow `stepId`.
+- `/api/dashboard/v2/runs/:runId/artifacts/:artifactRef` streams one validated
+  preview/download artifact.
+- `/api/dashboard/v2/events` streams bounded invalidation envelopes and
+  heartbeat comments.
+
+The server and browser contracts ship atomically under one schema version. SSE
+is a lossy hint, never a state transition or authority: events may be dropped,
+duplicated, delayed, reordered, or reset. The SSE frame carries a bounded
+invalidation envelope and revision id; it carries no run-state data.
+`snapshot_changed` publication is coalesced to the configured interval, while
+stale/recovered events publish immediately. The browser ignores invalid or
+non-increasing ids, coalesces query invalidation to one signal per 100ms, resets
+sequence tracking and refetches after reconnect, and also performs a normal
+validated snapshot GET every 15 seconds. `If-None-Match` remains a supported
+route contract for other same-origin callers; the current browser fetch adapter
+does not send a conditional header.
+
+`DashboardReadModel` owns both the last-good immutable runs and authoritative
+observer freshness. A successful refresh increments revision, atomically
+publishes a validated snapshot, records the attempt as the last success, resets
+the failure count, and emits `snapshot_changed` or `observer_recovered`. A
+failure before any good snapshot leaves no published revision and returns the
+bounded first-load error. A failure after a good snapshot increments revision,
+retains its runs and last-success time, preserves the original `staleSince`,
+increments `consecutiveFailures`, sets the fixed
+`observer_refresh_failed` diagnostic, advances the ETag, and emits
+`observer_stale`; only a later successful refresh clears stale.
+
+The browser may display Live only when authoritative observer freshness is
+`fresh`, no newer `observer_stale` event hint is pending reconciliation, and
+EventSource is connected. Connected EventSource alone is never proof of fresh
+data. `ORBITA_DASHBOARD_STALE_MS` bounds the server's full-refresh cadence by
+making the effective polling interval `min(POLL_MS, STALE_MS)`; the current
+browser does not derive freshness from elapsed age. Snapshot failure cannot
+render as empty success; detail failure remains local to the detail surface;
+one corrupt run becomes one Degraded summary without hiding healthy runs.
+
+Request authority is explicit. Process configuration alone selects the runs
+root. The validated snapshot revision owns summary/freshness state. The
+router's `run` search value owns detail selection; React Query keys detail data
+by that exact id, the fetch adapter URL-encodes it, and the route decodes and
+validates it before exact index lookup. Filtered or missing selection retains
+the id and never authorizes fallback to the first or neighboring run.
+
+### Relationships and Dependency Rules
 
 ```mermaid
 flowchart LR
-  runs[(Durable run state\n~/.orbita/workflow-runs/v1)]
-  observer[Dashboard observer reader\nread-only adapter]
-  projection[Safe dashboard projection\nallowlisted DTOs]
-  api[Dashboard daemon API\nlist, detail, events, static UI]
-  sse[SSE-first event surface\nlossy updates]
-  ui[Browser dashboard UI\nboard, drawer, mini-map]
-  design[DESIGN.md\nboard/drawer input]
+  runs[(Durable run state)]
+  observer[Observer read model]
+  projection[Safe projection]
+  contracts[Versioned contracts]
+  server[Start server routes]
+  client[Query and event adapters]
+  board[React board]
+  design[DESIGN.md]
 
   runs -->|read only| observer
   observer --> projection
-  projection --> api
-  api --> sse
-  api --> ui
-  design --> ui
+  projection --> contracts
+  server -->|server composition| observer
+  server --> contracts
+  contracts --> client
+  client --> board
+  design --> board
 ```
 
-The dashboard daemon may rebuild projections by rereading durable state after
-restart or watcher loss. Event delivery is lossy and observational: SSE/poll
-recovery must never create backpressure into workflow execution, hold run
-leases, or delay `workflow-runner` control commands.
+Binding rules:
 
-### Dashboard Dependency Rules
+- Client-reachable UI modules must not import `observer/**`, `projection/**`,
+  persistence, entrypoints, runtime/use-cases/entities, Node built-ins, process
+  environment, or any `.server.ts` module.
+- `contracts/**` must not import a dashboard implementation zone or Node-only
+  module.
+- `projection/**` may import contracts and validated plain records; it must not
+  import filesystem/process APIs, Start routes, watchers, leases, writers,
+  runner mutation/control APIs, or UI modules.
+- `observer/**` may import approved read-only persistence, projection,
+  contracts, and read/watch APIs; it must not import writers, locks/leases,
+  mutation/control APIs, CLI shells, host lifecycle, or UI/browser modules.
+- Start server routes may reach observer code only through one explicit
+  server-only composition module. Routes do not classify lanes, redact values,
+  parse durable state, or expose raw errors.
+- No dashboard module may import or construct `next`, `continue`,
+  `write-output`, `instructions`, `movePointer`, `listPointerTransitions`,
+  claim/lease/bind-agent, repair/retry-run, or manual-move surfaces.
+- Tests cross the same contracts used by callers: schemas/projection, observer
+  service, HTTP routes, React behavior, and browser flows. Reaching through a
+  seam to private state is not a substitute.
 
-Binding rules for dashboard code:
+`.dependency-cruiser.cjs` and production client-bundle inspection are hard
+mechanical gates for these rules. The bundle must contain no Node, persistence,
+observer, projection, workflow-runner, lease/control, private environment,
+path, prompt, token, or transcript implementation material.
 
-- `lib/dashboard/**` must not import runner mutation/control entrypoints, CLI
-  command builders, lease authority, write-output/continue/next/
-  listPointerTransitions/movePointer API handlers, list-pointer-transitions/
-  move-pointer CLI modes, or host worker lifecycle code.
-- Browser UI code must depend only on dashboard DTO contracts and browser
-  platform APIs; it must not import persistence, filesystem helpers,
-  workflow-runner API shells, or Node-only modules.
-- Projection code may depend on DTO/schema/value helpers and read-only records,
-  but must not depend on CLI argument parsing, process environment, locks,
-  leases, or mutation use cases.
-- Dashboard server code may coordinate read-only IO and response formatting, but
-  workflow-domain decisions still belong in existing entities/use cases and
-  dashboard-specific display decisions belong in projection.
-- Dashboard artifacts, degraded diagnostics, bounded history excerpts, cursor
-  chips, and mini-map data are projections. They are not durable workflow state
-  and must not be written back into run directories.
+### Compatibility, Operations, and Architecture Memory
 
-Add mechanical boundary checks for these rules when dashboard code is added.
-At minimum, tests/checks must prove absence of lease tokens, token-bearing
-commands, raw instruction commands, private prompts, hidden transcripts, raw
-instruction paths, preferred agent ids, worker binding flags, and unnecessary
-host control-plane metadata in browser-visible DTOs.
+The prototype compatibility decision is `delete_now`. The final implementation
+contains no `listDashboardRuns`, `getDashboardRun`, `startDashboardServer`,
+`orbita-dashboard serve`, custom Node HTTP server, string renderer, direct
+dashboard assets, whole-snapshot SSE, `/api/runs`, `/api/events`, unversioned
+`/api/dashboard/*`, or redirects/wrappers for them. Durable workflow-runner
+formats and mutation/control APIs remain unchanged.
+
+Process configuration owns runs root, loopback host/port, poll/reconciliation,
+coalescing, and stale intervals. Browser routes cannot choose a filesystem path.
+The supported command and configuration surface is documented in
+`lib/dashboard/README.md`.
+
+Server composition is a process-local lazy singleton created by the first API
+request. Creation starts one watcher when available and one periodic refresh
+timer. `close()` is idempotent and clears the watcher, poll/watch/invalidation
+timers, and subscribers; the current composition registers that close on
+`beforeExit`. Each SSE request separately clears its heartbeat and unsubscribes
+on request abort or stream cancellation. Do not claim a broader signal-hook
+contract without production evidence for that hook.
+
+Architecture artifact decision: `update_existing`. This section,
+`lib/dashboard/CONTEXT.md`, `DESIGN.md`, and `.dependency-cruiser.cjs` must stay
+consistent with routes, schemas, tests, commands, and rendered behavior. No ADR
+is added because these existing owning artifacts already record the decision.
+Contract/docs drift is blocker-level.
+
+Source rollback restores the previous complete source revision; there is no
+merged dual server/UI fallback and no data migration because durable run formats
+do not change. Failure of Bun Start/SSE/shutdown, freshness truth, disclosure or
+bundle boundaries, accessibility/focus, or approved performance gates reopens
+the approved architecture rather than silently weakening it.
 
 ### Workflow Loop Policies
 
@@ -558,30 +812,42 @@ declare `loopPolicies` to bound valid semantic cycles such as review -> fix ->
 review or approval -> revision -> approval. Workflows without `loopPolicies`
 must validate and run with unchanged behavior.
 
-The intended shape is static-graph first:
+The intended shape is policy-metadata first:
 
 - the workflow document owns policy definitions;
 - validation expands a finite route graph from literal `next`, `match/cases`,
   approval/user routes, and schema-enumerable dynamic `next` expressions;
-- validation detects cyclic regions with SCC/self-loop analysis;
-- each policy must select exactly one unambiguous detected region;
-- runtime counts selected valid internal route events, not full human-described
-  cycle rounds;
-- `maxIterations` exhausts when the next selected internal event would exceed
-  the limit, and runtime routes to the configured `onLimit` target instead of
-  the original cycle target;
+- each policy explicitly declares its cycle members in `steps`; validation
+  proves that the induced declared-step graph is cyclic instead of expanding
+  the policy to a maximal SCC from the full workflow graph;
+- external routes may place the declared cycle inside a larger graph cycle
+  without changing the policy's declared members;
+- each policy declares one iteration `entry` and one `boundary`; validation
+  proves all entries, repeats, and exits respect those boundaries;
+- runtime increments progress once when a complete entry-to-boundary traversal
+  finishes, not for each internal edge;
+- after `maxIterations` complete traversals, a selected boundary-to-entry repeat
+  resolves `onLimit` as an independent transition descriptor with the same
+  expression forms and boundary context as `next`, only after normal `next`
+  selected a repeat that reached the limit; its routing may differ from
+  `boundary.next`, but every possible result must already be a declared external
+  target of the boundary step, so runtime never creates a synthetic edge;
+- any declared external target selected before the boundary repeat remains a
+  normal early exit; an incomplete traversal does not advance progress;
 - baton stores only loop progress counters in a loop-specific namespace, never
   workflow policy definitions.
 
-Loop policies are separate from output.schema retry. Invalid worker or approval
-output that is retried by output.schema validation must not increment loop
-policy progress. The retry key shape `<stepId>:output.schema` remains reserved
-for output.schema attempts; loop policy progress must use a distinct namespace.
+Loop policies are separate from worker `output.schema` retry. Invalid worker
+output retried by output-schema validation must not increment loop policy
+progress. Invalid approval decisions are rejected by the closed runner-owned
+contract and do not enter workflow output-schema retry. The retry key shape
+`<stepId>:output.schema` remains reserved for worker output-schema attempts;
+loop policy progress must use a distinct namespace.
 
 Rejected primary models:
 
 - per-transition `cycleId` labels;
-- arbitrary named step scopes that create cycles manually;
+- runtime-inferred loop membership that overrides the workflow policy;
 - runtime history, repeated cursor, backward-jump, or graph traversal heuristics;
 - prompt-only loop limits.
 
@@ -606,10 +872,14 @@ Allowed:
 - `use-cases -> file contracts`
 - `runtime helpers -> entities`
 - `runtime helpers -> file contracts`
+- host-work projection -> plain workflow/Baton records, step-action policy,
+  and public stop shaping
+- approval projection -> typed state selection, supplied artifact path facts,
+  redaction, runner approval contract, and command builders
 - `persistence -> DTOs/records/file contracts`
 - Workflow loop policy validation may depend on workflow contracts, output
-  schema target enumerability, route graph expansion, and SCC/self-loop
-  detection; it must not depend on baton history or host adapter state.
+  schema target enumerability, route graph expansion, and declared-cycle
+  connectivity; it must not depend on baton history or host adapter state.
 - Runtime loop policy enforcement may depend on compiled validation metadata,
   the selected valid route event, and baton progress counters; it must not own
   workflow policy definitions.
@@ -627,19 +897,24 @@ Forbidden:
 - `lib/runtime -> node:fs`
 - `lib/runtime -> node:path`
 - `lib/runtime -> persistence`
+- host-work projection -> entrypoints
+- host-work projection -> Template
+- host-work projection -> command builders
+- host-work projection -> workflow output-schema loaders
+- approval/stop/terminal projection -> Template
+- approval/stop/terminal projection -> workflow output-schema loaders
+- entrypoints -> renderer internals
 - top-level use cases -> catalog readers
 - runner runtime -> catalog/config discovery
 - `persistence -> use-cases`
 - run-state persistence -> startup validation
 - `persistence -> entities/Baton/schema/**` after schema ownership migration
-- matrix runtime/entity helpers -> `node:fs`
-- matrix runtime/entity helpers -> `node:path`
-- matrix runtime/entity helpers -> persistence
-- matrix runtime/entity helpers -> entrypoints
-- matrix runtime/entity helpers -> dashboard
-- persistence -> matrix runtime/use-case helpers
-- general matrix modules -> review-sharding modules as the policy source,
-  unless a later migration contract approves an adapter
+- shard runtime/entity helpers -> `node:fs`
+- shard runtime/entity helpers -> `node:path`
+- shard runtime/entity helpers -> persistence
+- shard runtime/entity helpers -> entrypoints
+- shard runtime/entity helpers -> dashboard
+- persistence -> shard runtime/use-case helpers
 - supported command paths or exports for retired legacy surfaces
 - dashboard code mutating run state, acquiring leases, invoking runner
   navigation/output/pointer-recovery commands, or exposing private runner
@@ -655,48 +930,53 @@ Architecture review must verify:
 - helper/schema zones are colocated unless shared ownership pressure is proven
 - docs, checks, and source agree on supported command surface and dependency
   rules
+- executable entries remain text-free, unresolved stops are selected before
+  rendering, and only effective `run_worker` reaches Template
+- the approval owner is the single typed selection/decision boundary, verdict
+  inclusion is proven by current route applicability, every selected producer
+  dominates the gate across static, match-case, schema-expanded dynamic, and
+  loop-policy `onLimit` edges, and no approval prompt, output schema, Template
+  branch, compatibility wrapper, or deprecated export survives
+- first-commit failure recovery retains the absent-file v2 journal and original
+  lease authority until same-token recovery materializes history, baton, and
+  current requests atomically
+- full-JSON `done` has one top-level baton and no requests, while terminal
+  instruction text has no baton, serialized response, or next runner command
 - pointer recovery docs, API exports, CLI modes, tests, and source agree that
   `listPointerTransitions` and `movePointer` require active lease authority,
-  preserve baton state, allow terminal single-cursor rollback along observed
-  non-terminal backward edges, reject parallel/array cursor scope, require
-  retained-output acknowledgement where applicable, and expose only redacted
-  bounded metadata
+  preserve baton state, derive predecessors from workflow transitions resolved
+  against `baton.state`, never use debug history as navigation state, reject
+  invalid legacy array cursor state, and expose only redacted bounded metadata
 - dashboard changes preserve the read-only observer boundary, safe projection
   layer, SSE/poll recovery behavior, degraded per-run isolation, and
   `DESIGN.md` board/drawer/no-control contract
 - dashboard tests or boundary checks prove browser DTOs exclude private
   runner/control fields and dashboard code does not import or call runner
   mutation/control surfaces
-- matrix docs, workflow schema, Baton schema, runtime behavior, tests, and
-  boundary checks agree on the first-class `kind: "matrix"` contract,
-  `state.matrix` ownership, and `state.shards` compatibility
-- matrix implementation keeps `baton.cursor` as the owner workflow step id and
-  proves synthetic unit ids never become workflow steps, cursor branches, or
-  pointer recovery targets
-- matrix current request tests prove stale owner, stale unit, wrong owner/unit,
-  unsafe unit id, duplicate unit id, retry exhaustion, blocked required unit, and
-  missing required coverage do not advance the owner
-- matrix DTO/redaction tests prove host requests and downstream owner output do
-  not expose raw item payloads, hidden prompts, transcripts, private paths,
-  standalone lease/token fields, token-bearing internals outside generated
-  commands, or unbounded full unit outputs
+- shard docs, workflow schema, Baton schema, runtime behavior, tests, and boundary checks agree on the first-class `kind: "shard"` contract and `state.shards` ownership
+- shard execution keeps `baton.cursor` on the parent step, snapshots values once, batches by activation/index, stores bounded output references, and runs the genuine final step worker
+- shard DTO and prompt tests prove values appear only through explicitly authored interpolation and public request context excludes raw values, prompts, transcripts, private paths, and standalone token fields
 
 Backend review must verify:
 
-- canonical `next`, `instructions`, `write-output`, and `continue` behavior
-  remains coherent
+- canonical `next`, `instructions`, `write-output`, `report-stop`,
+  `resolve-stop`, and `continue` behavior remains coherent
 - output validation, artifact metadata handling, run-state persistence, leases,
   history, and current migration semantics did not change accidentally
 - imports obey the dependency rules above
+- `instructions --step-id` returns the current worker or approval projection
+  and rejects stop-superseded, terminal, missing, and stale requests before
+  renewing the lease
+- accepted approval output is exactly `approved|rejected` plus optional bounded
+  non-blank `feedback`; rejection routes through `output.approval` or a static
+  `onReject` target, and approval never invokes a workflow output-schema loader
 - custom workflow roots validate before run creation, retain source-qualified
   catalog identity, and do not widen resource access by duplicate workflow name
-- matrix source expansion initializes durable state once per owner/source
-  fingerprint, restart rerenders eligible units from `state.matrix`, unit output
-  updates only the matching durable record, and join proof gates normal `next`
-  transition
-- existing sequential, approval, fixed parallel, review-shards, output schema,
-  lease, artifact/debug-summary, history, worker binding, recoverable blocker,
-  and non-matrix workflow behavior remains compatible
+- shard `input.shards` expansion snapshots arbitrary JSON values once, restart rerenders the durable current batch, accepted outputs remain single primary records, and final worker output follows normal `next`
+- existing sequential, fanout, worker output-schema, lease,
+  artifact/debug-summary, history, worker binding, and non-blocking-stop
+  behavior remains compatible; approval prompt/schema variants are an
+  intentional atomic breaking migration with no compatibility layer
 
 QA/reliability review must verify:
 
@@ -704,11 +984,7 @@ QA/reliability review must verify:
 - boundary checks fail resolved forbidden imports and retired-surface exposure
 - retired legacy names are absent from supported command paths, exports, docs,
   and allow lists
-- matrix workflow tests cover valid matrix execution, invalid source shape,
-  unsafe and duplicate unit ids for static and runtime-expanded sources, nested
-  matrix rejection, unsupported optional/fail-fast/branch/subgraph forms,
-  restart rerender, max_parallel, retry/block behavior, complete join, and
-  non-matrix regressions
+- shard workflow tests cover literal and dynamic arrays, arbitrary JSON values, explicit value/index/total interpolation, absent implicit JSON injection, batching, durable resume, bounded output references, genuine final worker execution, invalid empty/non-array inputs, and fanout regressions
 
 Security and privacy review must verify:
 
@@ -716,8 +992,7 @@ Security and privacy review must verify:
   directories
 - run-state, lease, history, and output records do not expose new private data
   surfaces while ownership moves
-- matrix safe item context is allowlisted or otherwise bounded before storage or
-  rendering, and raw item payloads/full unit outputs are not exposed by default
+- shard values are durably snapshotted only as required for resume, omitted from public request DTOs, and rendered into prompts only through explicit interpolation
 
 ## Non-Goals
 
@@ -731,7 +1006,4 @@ Security and privacy review must verify:
 - Add broad framework seams where a narrow colocated helper or named use-case
   API is enough.
 - Add brittle boundary rules for ownership questions that remain unresolved.
-- Use matrix v1 to migrate `state.shards`, redesign fixed parallel/array cursor
-  semantics, add optional/fail-fast policy, branch tables, nested per-item
-  subgraphs, recursive matrix, distributed child runs, dashboard mutation
-  behavior, pointer-recovery matrix mutation, or PR #213 architecture adoption.
+- Add numeric shard-count shorthand, compatibility aliases, optional/fail-fast policy, branch tables, nested per-value subgraphs, distributed child runs, dashboard mutation behavior, or pointer-recovery mutation for synthetic shard requests.

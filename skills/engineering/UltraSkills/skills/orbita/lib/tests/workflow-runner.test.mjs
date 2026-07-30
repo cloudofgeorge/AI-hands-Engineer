@@ -25,26 +25,26 @@ const workflowDoc = {
         kind: 'worker',
         input: { prompt: 'Prepare branch.' },
         output: { template: 'output.md' },
-        next: ['branch_a', 'branch_b'],
+        next: 'branch_a',
       },
       branch_a: {
         name: 'Branch A',
         kind: 'worker',
         input: { prompt: 'Run branch A.' },
         output: { template: 'output.md' },
-        next: 'join',
+        next: 'branch_b',
       },
       branch_b: {
         name: 'Branch B',
         kind: 'worker',
         input: { prompt: 'Run branch B.' },
         output: { template: 'output.md' },
-        next: 'join',
+        next: 'finalize',
       },
-      join: {
-        name: 'Join',
+      finalize: {
+        name: 'Finalize',
         kind: 'worker',
-        input: { prompt: 'Join branch output.' },
+        input: { prompt: 'Finalize the workflow.' },
         output: { template: 'output.md' },
         next: 'done',
       },
@@ -224,31 +224,20 @@ test('runner: next returns a single host action request with load command only',
   assert.equal(existsSync(path.join(runDir, 'baton.json')), true);
 });
 
-test('runner: approval host instruction lists prompt input artifact content as required read', async () => {
+test('runner: approval host instruction lists prompt input artifacts as attachment-only', async () => {
   const { runId, runDir } = await runCase('approval-inline-instructions');
   const workflowPath = path.join(tempDir, 'approval-inline-instructions-workflow.json');
-  const schemaPath = path.join(tempDir, 'approval-inline-instructions.schema.json');
   const prepareSchemaPath = path.join(tempDir, 'approval-inline-prepare-output.schema.json');
   writeJson(prepareSchemaPath, {
     $schema: 'https://json-schema.org/draft/2020-12/schema',
     type: 'object',
-    required: ['outcome'],
+    required: ['outcome', 'artifacts'],
     properties: {
       outcome: { type: 'string' },
       artifacts: { type: 'array' },
       results: { type: 'array' },
     },
     additionalProperties: true,
-  });
-  writeJson(schemaPath, {
-    $schema: 'https://json-schema.org/draft/2020-12/schema',
-    type: 'object',
-    required: ['approval'],
-    properties: {
-      approval: { enum: ['approved', 'rejected', 'blocked'] },
-      blocker: { type: 'object' },
-    },
-    additionalProperties: false,
   });
   const approvalWorkflow = structuredClone(workflowDoc);
   approvalWorkflow.steps.prepare.next = 'approve';
@@ -257,9 +246,9 @@ test('runner: approval host instruction lists prompt input artifact content as r
     name: 'Approve research',
     kind: 'approval',
     input: {
-      prompt: 'Present artifact `reasons-canvas-research` from prepare to the user before asking for approval.\n\nArtifacts:\n${{ input.prepare.artifacts }}',
+      summary: '${{ input.prepare.outcome }}',
+      artifacts: ['${{ input.prepare.artifacts }}'],
     },
-    output: { schema: path.basename(schemaPath) },
     next: { match: '${{ output.approval }}', cases: { approved: 'done', rejected: 'prepare' } },
   };
   writeJson(workflowPath, approvalWorkflow);
@@ -287,30 +276,19 @@ test('runner: approval host instruction lists prompt input artifact content as r
 
   assert.equal(response.status, 'needs_host_actions');
   assert.equal(response.requests[0].action, 'wait_for_approval');
-  assert.deepEqual(Object.keys(response.requests[0]).sort(), ['action', 'id', 'loadInstructionsCommand', 'outputSchema', 'resolvedOutputSchema', 'stepId'].sort());
-  assert.match(response.orchestratorInstruction, /Approval request: approve/);
-  assert.match(response.orchestratorInstruction, /The orchestrator must execute this approval instruction itself\./);
-  assert.match(response.orchestratorInstruction, /Use the following compiled approval prompt as the complete source/);
-  assert.match(response.orchestratorInstruction, /When the compiled approval prompt lists required-read files or prompt input artifact paths, attach those files through the host\/platform approval mechanism before asking for a decision\./);
-  assert.match(response.orchestratorInstruction, /In Codex\/Codex Desktop, attaching means rendering each listed local artifact as a Markdown file link with an absolute target/);
-  assert.match(response.orchestratorInstruction, /\[reasons-canvas-research\.md\]\(\/absolute\/path\/reasons-canvas-research\.md\)/);
-  assert.match(response.orchestratorInstruction, /A plain text path, artifact id, or summary is not an attachment\./);
-  assert.match(response.orchestratorInstruction, /Do not replace artifact attachments with summaries, plain paths, or inline full artifact bodies\./);
-  assert.match(response.orchestratorInstruction, /If the host cannot attach or render a file link for a listed artifact, state that capability gap explicitly in the approval message and include the path\/reference that could not be attached\./);
-  assert.match(response.orchestratorInstruction, /Do not inspect workflow source, runner internals, schema files, or CLI help to reconstruct approval output\./);
-  assert.match(response.orchestratorInstruction, /After the user decides, normalize the answer to strict JSON and submit it with this validating command:/);
-  assert.match(response.orchestratorInstruction, new RegExp(`workflow-runner\\.mjs' write-output --run-id '${runId}' --step-id 'approve' --runs-root '${resolveRunPaths({ runId }).runsRoot}' --lease-token '${leaseToken}' <<'JSON'`));
+  assert.deepEqual(Object.keys(response.requests[0]).sort(), ['action', 'id', 'loadInstructionsCommand', 'stepId'].sort());
+  assert.match(response.orchestratorInstruction, /# Approval — Approve research/);
+  const writerPattern = new RegExp(`workflow-runner\\.mjs' write-output --run-id '${runId}' --step-id 'approve' --runs-root '${resolveRunPaths({ runId }).runsRoot}' --lease-token '${leaseToken}' <<'JSON'`, 'g');
+  assert.equal(response.orchestratorInstruction.match(writerPattern)?.length, 1);
   assert.match(response.orchestratorInstruction, /<paste strict JSON here>/);
-  assert.match(response.orchestratorInstruction, /# Approve research/);
-  assert.match(response.orchestratorInstruction, /## Required reads/);
-  assert.match(response.orchestratorInstruction, /Prompt input artifact 'reasons-canvas-research' from 'prepare' \(text\/markdown\):/);
+  assert.match(response.orchestratorInstruction, /## Approval attachments/);
+  assert.match(response.orchestratorInstruction, /\[reasons-canvas-research\]\(<.*prepare\/artifacts\/reasons-canvas-research\.md>\)/);
   assert.match(response.orchestratorInstruction, /prepare\/artifacts\/reasons-canvas-research\.md/);
-  assert.match(response.orchestratorInstruction, /## Output contract/);
-  assert.doesNotMatch(response.orchestratorInstruction, /## Prompt input context/);
-  assert.doesNotMatch(response.orchestratorInstruction, /### Prompt input artifact content/);
+  assert.match(response.orchestratorInstruction, /## Decision required/);
+  assert.match(response.orchestratorInstruction, /\{ "approval": "approved" \}/);
+  assert.doesNotMatch(response.orchestratorInstruction, /output schema|resolvedOutputSchema|compiled prompt/i);
+  assert.ok(Buffer.byteLength(response.orchestratorInstruction) <= 6_000, 'approval stdout exceeded the bounded compact-envelope budget');
   assert.doesNotMatch(response.orchestratorInstruction, /Full Canvas body for approval\./);
-  assert.match(response.orchestratorInstruction, /## Workflow step prompt/);
-  assert.match(response.orchestratorInstruction, /Present artifact `reasons-canvas-research`/);
   assert.match(response.orchestratorInstruction, new RegExp(`--lease-token '${leaseToken}'`));
 
 });
@@ -499,7 +477,7 @@ test('runner: CLI resume ignores deleted startup user prompt file and preserves 
   assert.equal(JSON.parse(readFileSync(path.join(runDir, 'baton.json'), 'utf8')).user_prompt, 'original file prompt');
 });
 
-test('runner: user prompt is included in first worker when workflow starts with approval step', async () => {
+test('runner: approval-first workflow is rejected because typed approval summary must come from an upstream producer', async () => {
   const { runId, runDir } = await runCase('user-prompt-control-start');
   const workflowPath = path.join(tempDir, 'user-prompt-control-start-workflow.json');
   const approvalFirstWorkflow = structuredClone(workflowDoc);
@@ -508,35 +486,15 @@ test('runner: user prompt is included in first worker when workflow starts with 
     gate: {
       name: 'Gate',
       kind: 'approval',
-      input: { prompt: 'Approve startup task.' },
-      next: { match: '${{ output.approval }}', cases: { approved: 'prepare', retry: 'prepare' } },
+      input: { summary: '${{ input.prepare.outcome }}' },
+      next: { match: '${{ output.approval }}', cases: { approved: 'prepare', rejected: 'prepare' } },
     },
     ...approvalFirstWorkflow.steps,
   };
   writeJson(workflowPath, approvalFirstWorkflow);
-  const rawPrompt = 'Raw task must reach first worker after approval.';
-
-  await expectRunner(['next', '--run-id', runId, '--workflow', workflowPath, '--user-prompt', rawPrompt], 'next approval-first with user prompt');
-  const gateInstructions = await runRunner(['instructions', '--run-id', runId, '--step-id', 'gate']);
-  assert.equal(gateInstructions.status, 0, gateInstructions.stderr);
-  assert.doesNotMatch(gateInstructions.stdout, /## User prompt/);
-  assert.equal(gateInstructions.stdout.includes(rawPrompt), false);
-
-  const approvalOutput = path.join(runDir, 'gate-output.json');
-  writeJson(approvalOutput, { approval: 'approved' });
-  await continueWithOutputs({ runId, runDir, workflowPath, refs: approvalOutput, label: 'continue approval-first gate' });
-  const firstWorkerInstructions = await runRunner(['instructions', '--run-id', runId, '--step-id', 'prepare']);
-  assert.equal(firstWorkerInstructions.status, 0, firstWorkerInstructions.stderr);
-  assert.match(firstWorkerInstructions.stdout, /## User prompt/);
-  assert.equal(firstWorkerInstructions.stdout.includes(rawPrompt), true);
-
-  const prepareOutput = path.join(runDir, 'prepare-output.json');
-  writeJson(prepareOutput, workerOutput('prepared'));
-  await continueWithOutputs({ runId, runDir, workflowPath, refs: prepareOutput, label: 'continue approval-first prepare' });
-  const laterInstructions = await runRunner(['instructions', '--run-id', runId, '--step-id', 'branch_a']);
-  assert.equal(laterInstructions.status, 0, laterInstructions.stderr);
-  assert.doesNotMatch(laterInstructions.stdout, /## User prompt/);
-  assert.equal(laterInstructions.stdout.includes(rawPrompt), false);
+  const result = await runRunner(['next', '--run-id', runId, '--workflow', workflowPath, '--user-prompt', 'Raw task.']);
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /input\.summary expression .* has no schema-covered path|input\.summary selector producer 'prepare' is not upstream/);
 });
 
 test('runner: startup prompt target rejects match-cases with worker and terminal branches', async () => {
@@ -548,7 +506,7 @@ test('runner: startup prompt target rejects match-cases with worker and terminal
     gate: {
       name: 'Gate',
       kind: 'approval',
-      input: { prompt: 'Approve startup task.' },
+      input: { summary: '${{ input.prepare.outcome }}' },
       next: { match: '${{ output.approval }}', cases: { approved: 'prepare', rejected: 'done' } },
     },
     ...approvalFirstWorkflow.steps,
@@ -558,10 +516,10 @@ test('runner: startup prompt target rejects match-cases with worker and terminal
   const result = await runRunner(['next', '--run-id', runId, '--workflow', workflowPath, '--user-prompt', 'Prompt must not be dropped.']);
 
   assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /cannot determine stable startup user prompt target: workflow step 'gate' has a match\/cases branch with no worker target/);
+  assert.match(result.stderr, /input\.summary expression .* has no schema-covered path|input\.summary selector producer 'prepare' is not upstream/);
 });
 
-test('runner: startup prompt target rejects a selected match-cases branch that no longer renders the target', async () => {
+test('runner: typed approval rejects an unavailable summary selector before startup prompt selection', async () => {
   const { runId, runDir } = await runCase('user-prompt-match-selected-target-missing');
   const workflowPath = path.join(tempDir, 'user-prompt-match-selected-target-missing.json');
   const approvalFirstWorkflow = structuredClone(workflowDoc);
@@ -570,28 +528,46 @@ test('runner: startup prompt target rejects a selected match-cases branch that n
     gate: {
       name: 'Gate',
       kind: 'approval',
-      input: { prompt: 'Choose startup route.' },
-      next: { match: '${{ output.choice }}', cases: { approved: 'prepare', retry: 'prepare' } },
+      input: { summary: '${{ input.prepare.outcome }}' },
+      next: { match: '${{ output.approval }}', cases: { approved: 'prepare', rejected: 'prepare' } },
     },
     ...approvalFirstWorkflow.steps,
   };
   writeJson(workflowPath, approvalFirstWorkflow);
 
-  const initial = await expectRunner(['next', '--run-id', runId, '--workflow', workflowPath, '--user-prompt', 'Prompt must reach prepare.'], 'next stable match-cases');
-  assert.equal(initial.baton.user_prompt_target, 'prepare');
-
-  const approvalOutput = path.join(runDir, 'gate-output.json');
-  writeJson(approvalOutput, { choice: 'approved' });
-  await writeOutputFile({ runId, runDir, workflowPath, stepId: 'gate', filePath: approvalOutput, label: 'write selected target missing output' });
-  approvalFirstWorkflow.steps.gate.next = { match: '${{ output.choice }}', cases: { approved: 'done', retry: 'prepare' } };
-  writeJson(workflowPath, approvalFirstWorkflow);
-  const result = await runRunner(['continue', '--run-id', runId, '--workflow', workflowPath]);
-
+  const result = await runRunner(['next', '--run-id', runId, '--workflow', workflowPath, '--user-prompt', 'Prompt must reach prepare.']);
   assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /startup user prompt target 'prepare' is not renderable in the current workflow response/);
+  assert.match(result.stderr, /input\.summary expression .* has no schema-covered path|input\.summary selector producer 'prepare' is not upstream/);
 });
 
-test('runner: startup prompt target rejects dynamic fanout before prompt selection can drift', async () => {
+test('runner: typed approval requires runner-owned output.approval routing', async () => {
+  const { runId } = await runCase('approval-runner-owned-routing');
+  const workflowPath = path.join(tempDir, 'approval-runner-owned-routing.json');
+  const schemaPath = path.join(tempDir, 'approval-runner-owned-routing.schema.json');
+  writeJson(schemaPath, {
+    $schema: 'https://json-schema.org/draft/2020-12/schema',
+    type: 'object',
+    required: ['outcome'],
+    properties: { outcome: { type: 'string' } },
+    additionalProperties: true,
+  });
+  const workflow = structuredClone(workflowDoc);
+  workflow.steps.prepare.output.schema = path.basename(schemaPath);
+  workflow.steps.prepare.next = 'gate';
+  workflow.steps.gate = {
+    name: 'Gate',
+    kind: 'approval',
+    input: { summary: '${{ input.prepare.outcome }}' },
+    next: { match: '${{ output.choice }}', cases: { approved: 'done', rejected: 'prepare' } },
+  };
+  writeJson(workflowPath, workflow);
+
+  const result = await runRunner(['next', '--run-id', runId, '--workflow', workflowPath]);
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /approval next must match \$\{\{ output\.approval \}\} with approved and rejected cases/);
+});
+
+test('runner: startup validation rejects legacy array next before prompt selection', async () => {
   const { runId, runDir } = await runCase('user-prompt-dynamic-fanout-rejected');
   const workflowPath = path.join(tempDir, 'user-prompt-dynamic-fanout-rejected.json');
   const approvalWorkflow = structuredClone(workflowDoc);
@@ -600,21 +576,21 @@ test('runner: startup prompt target rejects dynamic fanout before prompt selecti
     choose_path: {
       name: 'Choose path',
       kind: 'approval',
-      input: { prompt: 'Ask whether to fan out.' },
+      input: { summary: '${{ input.branch_a.outcome }}' },
       next: ['branch_a', '${{ output.extra_branch }}'],
     },
     branch_a: approvalWorkflow.steps.branch_a,
     branch_b: approvalWorkflow.steps.branch_b,
-    join: approvalWorkflow.steps.join,
+    finalize: approvalWorkflow.steps.finalize,
     done: approvalWorkflow.steps.done,
   };
-  approvalWorkflow.steps.join.next = 'done';
+  approvalWorkflow.steps.finalize.next = 'done';
   writeJson(workflowPath, approvalWorkflow);
 
   const result = await runRunner(['next', '--run-id', runId, '--workflow', workflowPath, '--user-prompt', 'Prompt must not pick a drift-prone fanout target.']);
 
   assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /cannot determine stable startup user prompt target: workflow step 'choose_path' uses dynamic or ambiguous next/);
+  assert.match(result.stderr, /workflow failed schema validation: .*next must be string/);
 });
 
 test('runner: next resumes existing baton without overwriting user prompt', async () => {
@@ -656,51 +632,10 @@ function schemaCoveredWorkflow(overrides = {}) {
   Object.assign(workflow.steps.prepare, overrides.prepare ?? {});
   Object.assign(workflow.steps.branch_a, overrides.branchA ?? {});
   Object.assign(workflow.steps.branch_b, overrides.branchB ?? {});
-  Object.assign(workflow.steps.join, overrides.join ?? {});
+  Object.assign(workflow.steps.finalize, overrides.finalize ?? {});
   return workflow;
 }
 
-function matrixRunnerWorkflow() {
-  const schemaPath = path.join(tempDir, `matrix-output-${process.pid}-${Math.random().toString(16).slice(2)}.schema.json`);
-  writeJson(schemaPath, {
-    $schema: 'https://json-schema.org/draft/2020-12/schema',
-    type: 'object',
-    required: ['outcome'],
-    properties: {
-      outcome: { enum: ['ready', 'blocked'] },
-      results: { type: 'array' },
-      artifacts: { type: 'array' },
-      summary: { type: 'string' },
-    },
-    additionalProperties: true,
-  });
-  return {
-    name: 'matrix-runner-check',
-    version: 1,
-    start: 'fanout',
-    done: 'done',
-    steps: {
-      fanout: {
-        name: 'Fan out',
-        kind: 'matrix',
-        source: {
-          items: [
-            { id: 'unit_a', context: { title: 'A' } },
-            { id: 'unit_b', context: { title: 'B' } },
-            { id: 'unit_c', context: { title: 'C' } },
-          ],
-        },
-        max_parallel: 2,
-        worker: {
-          input: { prompt: 'Handle one matrix unit.' },
-          output: { template: 'output.md', schema: path.basename(schemaPath) },
-        },
-        next: 'done',
-      },
-      done: { name: 'Done', kind: 'done' },
-    },
-  };
-}
 
 test('runner: write-output accepts valid stdin JSON into baton state and continue advances without --output', async () => {
   const { runId, runDir } = await runCase('write-output-stdin-valid');
@@ -771,7 +706,7 @@ test('runner: write-output rejects invalid JSON/schema without accepting output'
 
   const continued = await runRunner(['continue', '--run-id', runId, '--workflow', workflowPath]);
   assert.notEqual(continued.status, 0);
-  assert.match(continued.stderr, /missing accepted host output for workflow step prepare/);
+  assert.match(continued.stderr, /missing completed output or non-blocking stop for workflow request prepare/);
 });
 
 test('runner: worker instructions include prefilled validating write-output command', async () => {
@@ -797,116 +732,17 @@ test('runner: worker instructions include prefilled validating write-output comm
   assert.match(instructions.stdout, /Do not write history\.md directly/);
 });
 
-test('runner: matrix synthetic requests load instructions, accept unit outputs, and join through owner cursor', async () => {
-  const { runId, runDir } = await runCase('matrix-synthetic-requests');
-  const workflowPath = path.join(tempDir, 'matrix-synthetic-requests-workflow.json');
-  writeJson(workflowPath, matrixRunnerWorkflow());
 
-  const first = await expectRunner(['next', '--run-id', runId, '--workflow', workflowPath], 'next matrix synthetic requests');
-  assert.equal(first.status, 'needs_host_actions');
-  assert.equal(first.baton.cursor, 'fanout');
-  assert.deepEqual(first.requests.map((request) => request.stepId), ['fanout__matrix__unit_a', 'fanout__matrix__unit_b']);
-  assert.deepEqual(first.requests.map((request) => request.ownerStepId), ['fanout', 'fanout']);
-  assert.deepEqual(first.requests.map((request) => request.matrix.unit_id), ['unit_a', 'unit_b']);
-  assert.equal(first.baton.state.matrix.fanout.current_requests.length, 2);
-
-  const staleOwnerInstructions = await runRunner(['instructions', '--run-id', runId, '--workflow', workflowPath, '--step-id', 'fanout']);
-  assert.notEqual(staleOwnerInstructions.status, 0);
-  assert.match(staleOwnerInstructions.stderr, /current request step ids: fanout__matrix__unit_a, fanout__matrix__unit_b/);
-
-  const unitInstructions = await runRunner(['instructions', '--run-id', runId, '--workflow', workflowPath, '--step-id', 'fanout__matrix__unit_a']);
-  assert.equal(unitInstructions.status, 0, unitInstructions.stderr);
-  assert.match(unitInstructions.stdout, /Matrix owner step: fanout/);
-  assert.match(unitInstructions.stdout, /Matrix unit id: unit_a/);
-  assert.match(unitInstructions.stdout, /--step-id 'fanout__matrix__unit_a'/);
-  assert.match(unitInstructions.stdout, /--debug-summary-file '[^']+\/fanout__matrix__unit_a\/debug-summary\.md'/);
-
-  const staleOwnerWrite = await runRunner(['write-output', '--run-id', runId, '--workflow', workflowPath, '--step-id', 'fanout'], { input: JSON.stringify(workerOutput('owner')), debugSummary: true });
-  assert.notEqual(staleOwnerWrite.status, 0);
-  assert.match(staleOwnerWrite.stderr, /current request step ids: fanout__matrix__unit_a, fanout__matrix__unit_b/);
-
-  assert.equal((await runRunner(['write-output', '--run-id', runId, '--workflow', workflowPath, '--step-id', 'fanout__matrix__unit_a'], { input: JSON.stringify(workerOutput('A')), debugSummary: true })).status, 0);
-  assert.equal((await runRunner(['write-output', '--run-id', runId, '--workflow', workflowPath, '--step-id', 'fanout__matrix__unit_b'], { input: JSON.stringify(workerOutput('B')), debugSummary: true })).status, 0);
-  const batonAfterWrites = JSON.parse(readFileSync(path.join(runDir, 'baton.json'), 'utf8'));
-  assert.equal(batonAfterWrites.cursor, 'fanout');
-  assert.equal(batonAfterWrites.state.fanout__matrix__unit_a.results[0].summary, 'A');
-  assert.equal(batonAfterWrites.state.fanout__matrix__unit_b.results[0].summary, 'B');
-
-  const second = await expectRunner(['continue', '--run-id', runId, '--workflow', workflowPath], 'continue matrix to remaining unit');
-  assert.equal(second.baton.cursor, 'fanout');
-  assert.deepEqual(second.requests.map((request) => request.stepId), ['fanout__matrix__unit_c']);
-  assert.equal(second.baton.state.matrix.fanout.units.filter((unit) => unit.status === 'accepted').length, 2);
-  assert.equal(Object.hasOwn(second.baton.state, 'fanout__matrix__unit_a'), false);
-  assert.equal(Object.hasOwn(second.baton.state.matrix.fanout.accepted_outputs.unit_a, 'output'), false);
-  assert.deepEqual(second.baton.state.matrix.fanout.accepted_outputs.unit_a.output_ref, { step_id: 'fanout__matrix__unit_a' });
-
-  const staleOldUnitWrite = await runRunner(['write-output', '--run-id', runId, '--workflow', workflowPath, '--step-id', 'fanout__matrix__unit_a'], { input: JSON.stringify(workerOutput('old A')), debugSummary: true });
-  assert.notEqual(staleOldUnitWrite.status, 0);
-  assert.match(staleOldUnitWrite.stderr, /current request step ids: fanout__matrix__unit_c/);
-
-  const unitCArtifactPath = path.join(runDir, 'fanout__matrix__unit_c', 'artifacts', 'unit-c.md');
-  assert.equal((await runRunner(['write-output', '--run-id', runId, '--workflow', workflowPath, '--step-id', 'fanout__matrix__unit_c'], {
-    input: JSON.stringify({
-      ...workerOutput('C'),
-      artifacts: [{
-        id: 'unit-c',
-        content_type: 'text/markdown',
-        path: unitCArtifactPath,
-        summary: 'Unit C artifact.',
-      }],
-    }),
-    debugSummary: true,
-  })).status, 0);
-  const joined = await expectRunner(['continue', '--run-id', runId, '--workflow', workflowPath], 'continue matrix join');
-  assert.equal(joined.status, 'done');
-  assert.equal(joined.baton.cursor, 'done');
-  assert.equal(joined.baton.state.matrix.fanout.status, 'joined');
-  assert.equal(joined.baton.state.fanout.matrix_join_proof.coverage_complete, true);
-  assert.deepEqual(joined.baton.state.fanout.matrix_join_proof.accepted_unit_ids, ['unit_a', 'unit_b', 'unit_c']);
-  assert.equal(joined.baton.state.artifacts.some((entry) => entry.producerStepId === 'fanout__matrix__unit_c' && entry.artifact.id === 'unit-c'), true);
-  assert.deepEqual(joined.baton.state.matrix.fanout.accepted_outputs.unit_c.artifact_ids, ['unit-c']);
-  assert.equal(Object.hasOwn(joined.baton.state, 'fanout__matrix__unit_c'), false);
-});
-
-test('runner: write-output separates parallel request outputs by step id before continue without --output', async () => {
-  const { runId, runDir } = await runCase('write-output-parallel-step-ids');
-  const workflowPath = path.join(tempDir, 'write-output-parallel-step-ids-workflow.json');
-  const workflow = schemaCoveredWorkflow({ join: { next: 'done' } });
-  writeJson(workflowPath, workflow);
-
-  await expectRunner(['next', '--run-id', runId, '--workflow', workflowPath], 'next before prepare writer');
-  assert.deepEqual(persistedCurrentRequestStepIds(runDir), ['prepare']);
-  assert.equal((await runRunner(['write-output', '--run-id', runId, '--step-id', 'prepare'], { input: JSON.stringify(workerOutput('prepared')), debugSummary: true })).status, 0);
-  assert.deepEqual(persistedCurrentRequestStepIds(runDir), ['prepare']);
-  const fanout = await expectRunner(['continue', '--run-id', runId, '--workflow', workflowPath], 'continue to parallel branches');
-  assert.deepEqual(fanout.requests.map((request) => request.stepId).sort(), ['branch_a', 'branch_b']);
-  assert.deepEqual(persistedCurrentRequestStepIds(runDir), ['branch_a', 'branch_b']);
-
-  assert.equal((await runRunner(['write-output', '--run-id', runId, '--step-id', 'branch_a'], { input: JSON.stringify(workerOutput('A')), debugSummary: true })).status, 0);
-  assert.equal((await runRunner(['write-output', '--run-id', runId, '--step-id', 'branch_b'], { input: JSON.stringify(workerOutput('B')), debugSummary: true })).status, 0);
-  assert.deepEqual(persistedCurrentRequestStepIds(runDir), ['branch_a', 'branch_b']);
-  const batonAfterWrites = JSON.parse(readFileSync(path.join(runDir, 'baton.json'), 'utf8'));
-  assert.equal(batonAfterWrites.state.branch_a.results[0].summary, 'A');
-  assert.equal(batonAfterWrites.state.branch_b.results[0].summary, 'B');
-
-  const joined = await expectRunner(['continue', '--run-id', runId, '--workflow', workflowPath], 'continue from accepted parallel outputs');
-  assert.equal(joined.status, 'needs_host_actions');
-  assert.equal(joined.baton.cursor, 'join');
-  assert.deepEqual(persistedCurrentRequestStepIds(runDir), ['join']);
-  assert.equal(joined.baton.state.branch_a.results[0].summary, 'A');
-  assert.equal(joined.baton.state.branch_b.results[0].summary, 'B');
-});
-
-test('runner: repeated parallel fanout uses cursor branches and latest overwritten branch state', async () => {
-  const { runId, runDir } = await runCase('repeated-parallel-fanout-latest-state');
-  const workflowPath = path.join(tempDir, 'repeated-parallel-fanout-latest-state-workflow.json');
-  const schemaPath = path.join(tempDir, 'repeated-parallel-fanout-output.schema.json');
+test('runner: fanout persists owner phase and synthetic branch requests through instructions and writes', async () => {
+  const { runId, runDir } = await runCase('fanout-owner-requests');
+  const workflowPath = path.join(tempDir, 'fanout-owner-requests-workflow.json');
+  const schemaPath = path.join(tempDir, 'fanout-owner-requests.schema.json');
   writeJson(schemaPath, {
     $schema: 'https://json-schema.org/draft/2020-12/schema',
     type: 'object',
     required: ['outcome'],
     properties: {
-      outcome: { enum: ['ready', 'needs_changes', 'passed'] },
+      outcome: { enum: ['ready'] },
       results: { type: 'array' },
       artifacts: { type: 'array' },
     },
@@ -914,118 +750,300 @@ test('runner: repeated parallel fanout uses cursor branches and latest overwritt
   });
   const output = { template: 'output.md', schema: path.basename(schemaPath) };
   const workflow = {
-    name: 'repeated-parallel-fanout-latest-state',
+    name: 'fanout-owner-requests',
     version: 1,
-    start: 'implementation_join',
+    start: 'review',
     done: 'done',
     steps: {
-      implementation_join: {
-        name: 'Implementation join',
-        kind: 'worker',
-        input: { prompt: 'Join implementation.' },
-        output,
-        next: 'review_dispatch',
-      },
-      review_dispatch: {
-        name: 'Review dispatch',
-        kind: 'worker',
-        input: { prompt: 'Dispatch reviews.' },
-        output,
-        next: ['backend_review', 'frontend_review'],
-      },
-      backend_review: {
-        name: 'Backend review',
-        kind: 'worker',
-        input: { prompt: 'Review backend.' },
-        output,
-        next: 'review_join',
-      },
-      frontend_review: {
-        name: 'Frontend review',
-        kind: 'worker',
-        input: { prompt: 'Review frontend.' },
-        output,
-        next: 'review_join',
-      },
-      review_join: {
-        name: 'Review join',
-        kind: 'worker',
+      review: {
+        name: 'Review owner',
+        kind: 'fanout',
+        max_parallel: 2,
         input: {
+          branches: ['backend_review', 'frontend_review'],
           prompt: [
-            'Join review outputs.',
+            'Decide from the current review activation only.',
             'Backend: ${{ input.backend_review.results }}',
             'Frontend: ${{ input.frontend_review.results }}',
           ],
         },
         output,
-        next: {
-          match: '${{ output.outcome }}',
-          cases: {
-            ready: 'done',
-            needs_changes: 'implementation_join',
-            passed: 'done',
-          },
+        branches: {
+          backend_review: { input: { prompt: 'Review backend.' }, output },
+          frontend_review: { input: { prompt: 'Review frontend.' }, output },
         },
+        next: 'done',
       },
-      done: { name: 'Done', kind: 'done', input: { prompt: 'Done.' } },
+      done: { name: 'Done', kind: 'done' },
     },
   };
   writeJson(workflowPath, workflow);
 
-  await expectRunner(['next', '--run-id', runId, '--workflow', workflowPath], 'next repeated fanout');
-  const implV1 = path.join(runDir, 'implementation-v1.json');
-  const dispatchV1 = path.join(runDir, 'dispatch-v1.json');
-  const backendV1 = path.join(runDir, 'backend-v1.json');
-  const frontendV1 = path.join(runDir, 'frontend-v1.json');
-  const joinRetry = path.join(runDir, 'join-retry.json');
-  writeJson(implV1, workerOutput('implementation v1'));
-  writeJson(dispatchV1, workerOutput('dispatch v1'));
-  writeJson(backendV1, workerOutput('backend v1'));
-  writeJson(frontendV1, workerOutput('frontend v1'));
-  writeJson(joinRetry, { outcome: 'needs_changes', results: [{ type: 'check', summary: 'review needs changes' }] });
-  const firstDispatch = await continueWithOutputs({ runId, runDir, workflowPath, refs: implV1, label: 'continue implementation v1' });
-  assert.equal(firstDispatch.baton.cursor, 'review_dispatch');
-  const firstFanout = await continueWithOutputs({ runId, runDir, workflowPath, refs: dispatchV1, label: 'continue dispatch v1' });
-  assert.deepEqual(firstFanout.baton.cursor, ['backend_review', 'frontend_review']);
-  assert.deepEqual(firstFanout.requests.map((request) => request.id), ['backend_review', 'frontend_review']);
-  const firstJoin = await continueWithOutputs({
-    runId,
-    runDir,
-    workflowPath,
-    refs: [`backend_review=${backendV1}`, `frontend_review=${frontendV1}`],
-    label: 'continue review v1',
-  });
-  assert.equal(firstJoin.baton.cursor, 'review_join');
-  const retry = await continueWithOutputs({ runId, runDir, workflowPath, refs: joinRetry, label: 'continue review join retry' });
-  assert.equal(retry.baton.cursor, 'implementation_join');
+  const first = await expectRunner(['next', '--run-id', runId, '--workflow', workflowPath], 'next fanout branches');
+  assert.equal(first.baton.cursor, 'review');
+  assert.equal(first.baton.state.fanouts.review.phase, 'branches');
+  assert.deepEqual(first.requests.map((request) => request.stepId), [
+    'review__fanout__1__backend_review',
+    'review__fanout__1__frontend_review',
+  ]);
+  assert.deepEqual(first.requests.map((request) => request.ownerStepId), ['review', 'review']);
+  assert.deepEqual(persistedCurrentRequestStepIds(runDir), first.requests.map((request) => request.stepId));
 
-  const implV2 = path.join(runDir, 'implementation-v2.json');
-  const dispatchV2 = path.join(runDir, 'dispatch-v2.json');
-  const backendV2 = path.join(runDir, 'backend-v2.json');
-  const frontendV2 = path.join(runDir, 'frontend-v2.json');
-  writeJson(implV2, workerOutput('implementation v2'));
-  writeJson(dispatchV2, workerOutput('dispatch v2'));
-  writeJson(backendV2, workerOutput('backend v2'));
-  writeJson(frontendV2, workerOutput('frontend v2'));
-  await continueWithOutputs({ runId, runDir, workflowPath, refs: implV2, label: 'continue implementation v2' });
-  const secondFanout = await continueWithOutputs({ runId, runDir, workflowPath, refs: dispatchV2, label: 'continue dispatch v2' });
-  assert.deepEqual(secondFanout.baton.cursor, ['backend_review', 'frontend_review']);
-  assert.deepEqual(secondFanout.requests.map((request) => request.id), ['backend_review', 'frontend_review']);
-  const secondJoin = await continueWithOutputs({
-    runId,
-    runDir,
-    workflowPath,
-    refs: [`backend_review=${backendV2}`, `frontend_review=${frontendV2}`],
-    label: 'continue review v2',
+  const backendInstructions = await runRunner([
+    'instructions', '--run-id', runId, '--workflow', workflowPath, '--step-id', 'review__fanout__1__backend_review',
+  ]);
+  assert.equal(backendInstructions.status, 0, backendInstructions.stderr);
+  assert.match(backendInstructions.stdout, /Fanout owner step: review/);
+  assert.match(backendInstructions.stdout, /Fanout activation: 1/);
+  assert.match(backendInstructions.stdout, /Fanout branch id: backend_review/);
+  assert.match(backendInstructions.stdout, /--step-id 'review__fanout__1__backend_review'/);
+
+  for (const [stepId, summary] of [
+    ['review__fanout__1__backend_review', 'backend current'],
+    ['review__fanout__1__frontend_review', 'frontend current'],
+  ]) {
+    const written = await runRunner(
+      ['write-output', '--run-id', runId, '--workflow', workflowPath, '--step-id', stepId],
+      { input: JSON.stringify(workerOutput(summary)), debugSummary: true },
+    );
+    assert.equal(written.status, 0, written.stderr);
+  }
+
+  const owner = await expectRunner(['continue', '--run-id', runId, '--workflow', workflowPath], 'continue fanout owner');
+  assert.equal(owner.baton.cursor, 'review');
+  assert.equal(owner.baton.state.fanouts.review.phase, 'owner');
+  assert.deepEqual(owner.requests.map((request) => request.stepId), ['review']);
+  assert.deepEqual(persistedCurrentRequestStepIds(runDir), ['review']);
+  assert.equal(owner.baton.state.backend_review.results[0].summary, 'backend current');
+  assert.equal(owner.baton.state.frontend_review.results[0].summary, 'frontend current');
+  assert.equal(Object.hasOwn(owner.baton.state, 'review__fanout__1__backend_review'), false);
+
+  const ownerInstructions = await runRunner(['instructions', '--run-id', runId, '--workflow', workflowPath, '--step-id', 'review']);
+  assert.equal(ownerInstructions.status, 0, ownerInstructions.stderr);
+  assert.match(ownerInstructions.stdout, /backend current/);
+  assert.match(ownerInstructions.stdout, /frontend current/);
+
+  const writtenOwner = await runRunner(
+    ['write-output', '--run-id', runId, '--workflow', workflowPath, '--step-id', 'review'],
+    { input: JSON.stringify(workerOutput('owner accepted')), debugSummary: true },
+  );
+  assert.equal(writtenOwner.status, 0, writtenOwner.stderr);
+  const completed = await expectRunner(['continue', '--run-id', runId, '--workflow', workflowPath], 'complete fanout owner');
+  assert.equal(completed.status, 'done');
+  assert.equal(completed.baton.state.fanouts.review.phase, 'completed');
+});
+
+test('runner: fanout owner non-blocking stop resumes before downstream fanout reads owner fields', async () => {
+  const { runId } = await runCase('fanout-owner-stop-resume');
+  const workflowPath = path.join(tempDir, 'fanout-owner-stop-resume.workflow.json');
+  const branchSchemaPath = path.join(tempDir, 'fanout-owner-stop-branch.schema.json');
+  const ownerSchemaPath = path.join(tempDir, 'fanout-owner-stop-owner.schema.json');
+  writeJson(branchSchemaPath, {
+    $schema: 'https://json-schema.org/draft/2020-12/schema',
+    type: 'object',
+    required: ['outcome'],
+    properties: { outcome: { const: 'ready' }, results: { type: 'array' } },
+    additionalProperties: false,
+  });
+  writeJson(ownerSchemaPath, {
+    $schema: 'https://json-schema.org/draft/2020-12/schema',
+    type: 'object',
+    required: ['outcome', 'review_branches'],
+    properties: {
+      outcome: { const: 'ready_for_review' },
+      review_branches: {
+        type: 'array',
+        minItems: 1,
+        uniqueItems: true,
+        items: { enum: ['backend_review'] },
+      },
+    },
+    additionalProperties: false,
+  });
+  const branchOutput = { template: 'output.md', schema: path.basename(branchSchemaPath) };
+  writeJson(workflowPath, {
+    name: 'fanout-owner-stop-resume',
+    version: 1,
+    start: 'implementation',
+    done: 'done',
+    steps: {
+      implementation: {
+        name: 'Implementation owner',
+        kind: 'fanout',
+        input: { branches: ['backend_implementation', 'frontend_implementation'], prompt: 'Aggregate implementation.' },
+        output: { template: 'output.md', schema: path.basename(ownerSchemaPath) },
+        branches: {
+          backend_implementation: { input: { prompt: 'Implement backend.' }, output: branchOutput },
+          frontend_implementation: { input: { prompt: 'Implement frontend.' }, output: branchOutput },
+        },
+        next: 'review',
+      },
+      review: {
+        name: 'Review owner',
+        kind: 'fanout',
+        input: {
+          branches: '${{ input.implementation.review_branches }}',
+          prompt: 'Aggregate review.',
+        },
+        output: branchOutput,
+        branches: {
+          backend_review: { input: { prompt: 'Review backend.' }, output: branchOutput },
+        },
+        next: 'done',
+      },
+      done: { name: 'Done', kind: 'done' },
+    },
   });
 
-  assert.equal(secondJoin.baton.cursor, 'review_join');
-  assert.equal(secondJoin.baton.state.backend_review.results[0].summary, 'backend v2');
-  assert.equal(secondJoin.baton.state.frontend_review.results[0].summary, 'frontend v2');
-  const joinInstructions = await runRunner(['instructions', '--run-id', runId, '--step-id', 'review_join']);
-  assert.equal(joinInstructions.status, 0, joinInstructions.stderr);
-  assert.match(joinInstructions.stdout, /backend v2/);
-  assert.match(joinInstructions.stdout, /frontend v2/);
-  assert.doesNotMatch(joinInstructions.stdout, /backend v1/);
-  assert.doesNotMatch(joinInstructions.stdout, /frontend v1/);
-}, 500);
+  const branches = await expectRunner(['next', '--run-id', runId, '--workflow', workflowPath], 'start implementation fanout');
+  const backendBranchId = branches.requests.find((request) => request.fanout.branch_id === 'backend_implementation').stepId;
+  const frontendBranchId = branches.requests.find((request) => request.fanout.branch_id === 'frontend_implementation').stepId;
+  let result = await runRunner(
+    ['write-output', '--run-id', runId, '--workflow', workflowPath, '--step-id', backendBranchId],
+    { input: JSON.stringify(workerOutput('backend implemented')), debugSummary: true },
+  );
+  assert.equal(result.status, 0, result.stderr);
+
+  result = await runRunner(
+    ['report-stop', '--run-id', runId, '--workflow', workflowPath, '--step-id', frontendBranchId],
+    { input: JSON.stringify({ non_blocking_stop: { stop_id: '00000000-0000-4000-8000-000000000005', summary: 'Need frontend permission.', needed: 'Approve frontend implementation.' } }) },
+  );
+  assert.equal(result.status, 0, result.stderr);
+  const branchHelp = await expectRunner([
+    'continue', '--run-id', runId, '--workflow', workflowPath,
+    '--bind-agent', `${backendBranchId}=backend-worker`,
+    '--bind-agent', `${frontendBranchId}=frontend-worker`,
+  ], 'request fanout branch help');
+  assert.deepEqual(branchHelp.requests.map((request) => request.stepId), [frontendBranchId]);
+  assert.equal(branchHelp.requests[0].action, 'resolve_non_blocking_stop');
+  assert.equal(branchHelp.baton.state.backend_implementation.results[0].summary, 'backend implemented');
+
+  result = await runRunner(
+    ['resolve-stop', '--run-id', runId, '--workflow', workflowPath, '--step-id', frontendBranchId],
+    { input: JSON.stringify({ stop_id: '00000000-0000-4000-8000-000000000005', resolution: { summary: 'Frontend approved.', decision: 'Proceed with frontend implementation.' } }) },
+  );
+  assert.equal(result.status, 0, result.stderr);
+  const resumedBranch = await expectRunner(['continue', '--run-id', runId, '--workflow', workflowPath], 'resume stopped fanout branch');
+  assert.deepEqual(resumedBranch.requests.map((request) => request.stepId), [frontendBranchId]);
+  assert.equal(resumedBranch.requests[0].action, 'run_worker');
+  assert.equal(resumedBranch.requests[0].preferredAgentId, 'frontend-worker');
+
+  result = await runRunner(
+    ['write-output', '--run-id', runId, '--workflow', workflowPath, '--step-id', frontendBranchId],
+    { input: JSON.stringify(workerOutput('frontend implemented')), debugSummary: true },
+  );
+  assert.equal(result.status, 0, result.stderr);
+
+  const owner = await expectRunner(['continue', '--run-id', runId, '--workflow', workflowPath], 'enter implementation owner');
+  assert.equal(owner.requests[0].stepId, 'implementation');
+  result = await runRunner(
+    ['report-stop', '--run-id', runId, '--workflow', workflowPath, '--step-id', 'implementation'],
+    { input: JSON.stringify({ non_blocking_stop: { stop_id: '00000000-0000-4000-8000-000000000006', summary: 'Need reviewer choice.', needed: 'Choose the required reviewer.' } }) },
+  );
+  assert.equal(result.status, 0, result.stderr);
+
+  const help = await expectRunner([
+    'continue', '--run-id', runId, '--workflow', workflowPath,
+    '--bind-agent', 'implementation=implementation-worker',
+  ], 'request owner help');
+  assert.equal(help.baton.cursor, 'implementation');
+  assert.equal(help.baton.state.implementation, undefined);
+  assert.equal(help.requests[0].action, 'resolve_non_blocking_stop');
+
+  result = await runRunner(
+    ['resolve-stop', '--run-id', runId, '--workflow', workflowPath, '--step-id', 'implementation'],
+    { input: JSON.stringify({ stop_id: '00000000-0000-4000-8000-000000000006', resolution: { summary: 'Reviewer selected.', decision: 'Use backend_review.' } }) },
+  );
+  assert.equal(result.status, 0, result.stderr);
+  const resumed = await expectRunner(['continue', '--run-id', runId, '--workflow', workflowPath], 'resume implementation owner');
+  assert.equal(resumed.requests[0].stepId, 'implementation');
+  assert.equal(resumed.requests[0].action, 'run_worker');
+  assert.equal(resumed.requests[0].preferredAgentId, 'implementation-worker');
+  assert.equal(resumed.requests[0].nonBlockingStop.resolution.decision, 'Use backend_review.');
+
+  result = await runRunner(
+    ['write-output', '--run-id', runId, '--workflow', workflowPath, '--step-id', 'implementation'],
+    { input: JSON.stringify({ outcome: 'ready_for_review', review_branches: ['backend_review'] }), debugSummary: true },
+  );
+  assert.equal(result.status, 0, result.stderr);
+  const review = await expectRunner(['continue', '--run-id', runId, '--workflow', workflowPath], 'start downstream review fanout');
+  assert.equal(review.baton.cursor, 'review');
+  assert.deepEqual(review.requests.map((request) => request.fanout.branch_id), ['backend_review']);
+});
+
+test('runner: shard persists batches and runs the genuine final step worker', async () => {
+  const { runId, runDir } = await runCase('shard-worker-requests');
+  const workflowPath = path.join(tempDir, 'shard-worker-requests-workflow.json');
+  const schemaPath = path.join(tempDir, 'shard-worker-requests.schema.json');
+  writeJson(schemaPath, {
+    $schema: 'https://json-schema.org/draft/2020-12/schema',
+    type: 'object',
+    required: ['outcome'],
+    properties: {
+      outcome: { enum: ['ready'] },
+      summary: { type: 'string' },
+      results: { type: 'array' },
+      artifacts: { type: 'array' },
+    },
+    additionalProperties: true,
+  });
+  const output = { template: 'output.md', schema: path.basename(schemaPath) };
+  writeJson(workflowPath, {
+    name: 'shard-worker-requests',
+    version: 1,
+    start: 'review',
+    done: 'done',
+    steps: {
+      review: {
+        name: 'Review shards',
+        kind: 'shard',
+        max_parallel: 1,
+        input: { shards: [{ name: 'backend', secret: 'EXPLICIT_ONLY' }, { name: 'frontend' }], prompt: 'Finalize review.' },
+        output,
+        worker: {
+          input: { prompt: 'Review ${{ shard.value.name }} (${{ shard.index }}/${{ shard.total }}).' },
+          output,
+        },
+        next: 'done',
+      },
+      done: { name: 'Done', kind: 'done' },
+    },
+  });
+
+  const first = await expectRunner(['next', '--run-id', runId, '--workflow', workflowPath], 'next shard worker');
+  assert.equal(first.baton.cursor, 'review');
+  assert.deepEqual(first.requests.map((request) => request.stepId), ['review__shard__1__0']);
+  assert.equal(first.requests[0].parentStepId, 'review');
+  assert.equal(Object.hasOwn(first.requests[0].shard, 'value'), false);
+  assert.deepEqual(persistedCurrentRequestStepIds(runDir), ['review__shard__1__0']);
+
+  const instructions = await runRunner(['instructions', '--run-id', runId, '--workflow', workflowPath, '--step-id', 'review__shard__1__0']);
+  assert.equal(instructions.status, 0, instructions.stderr);
+  assert.match(instructions.stdout, /Review backend \(0\/2\)/);
+  assert.doesNotMatch(instructions.stdout, /EXPLICIT_ONLY/);
+
+  assert.equal((await runRunner(
+    ['write-output', '--run-id', runId, '--workflow', workflowPath, '--step-id', 'review__shard__1__0'],
+    { input: JSON.stringify(workerOutput('backend reviewed')), debugSummary: true },
+  )).status, 0);
+  const second = await expectRunner(['continue', '--run-id', runId, '--workflow', workflowPath], 'continue shard batch');
+  assert.deepEqual(second.requests.map((request) => request.stepId), ['review__shard__1__1']);
+  assert.equal(second.baton.state.review__shard__1__0.results[0].summary, 'backend reviewed');
+  assert.equal(Object.hasOwn(second.baton.state.shards.review.accepted_outputs['0'], 'output'), false);
+
+  assert.equal((await runRunner(
+    ['write-output', '--run-id', runId, '--workflow', workflowPath, '--step-id', 'review__shard__1__1'],
+    { input: JSON.stringify(workerOutput('frontend reviewed')), debugSummary: true },
+  )).status, 0);
+  const finalWorker = await expectRunner(['continue', '--run-id', runId, '--workflow', workflowPath], 'continue shard final worker');
+  assert.deepEqual(finalWorker.requests.map((request) => request.stepId), ['review']);
+  assert.equal(finalWorker.baton.state.shards.review.phase, 'worker');
+
+  assert.equal((await runRunner(
+    ['write-output', '--run-id', runId, '--workflow', workflowPath, '--step-id', 'review'],
+    { input: JSON.stringify(workerOutput('review finalized')), debugSummary: true },
+  )).status, 0);
+  const completed = await expectRunner(['continue', '--run-id', runId, '--workflow', workflowPath], 'complete shard final worker');
+  assert.equal(completed.status, 'done');
+  assert.equal(completed.baton.state.shards.review.phase, 'completed');
+});

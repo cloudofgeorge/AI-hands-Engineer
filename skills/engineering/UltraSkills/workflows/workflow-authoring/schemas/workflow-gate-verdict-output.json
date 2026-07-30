@@ -8,8 +8,7 @@
     "outcome": {
       "enum": [
         "approved",
-        "needs_revision",
-        "blocked"
+        "needs_revision"
       ]
     },
     "verdict": {
@@ -20,10 +19,30 @@
       "items": {
         "type": "object"
       }
-    },
-    "blocker": {
-      "type": "object"
     }
   },
-  "additionalProperties": true
+  "additionalProperties": true,
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "outcome": {
+            "enum": [
+              "approved",
+              "needs_revision"
+            ]
+          }
+        },
+        "required": [
+          "outcome"
+        ]
+      },
+      "then": {
+        "required": [
+          "verdict",
+          "findings"
+        ]
+      }
+    }
+  ]
 }

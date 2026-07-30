@@ -1,4 +1,4 @@
-import { readFile, stat } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { applyWorkflowOutput } from '../../use-cases/ApplyWorkflowOutput.mjs';
 import { validateRunnerAcceptedOutput } from '../../use-cases/WorkflowRunnerOutputValidation.mjs';
@@ -16,19 +16,22 @@ import { readWorkflowDocument } from '../../persistence/workflow-resources/workf
 import { artifactPathBoundaryErrors } from '../../persistence/workflow-resources/artifact-path-boundaries.mjs';
 import { writePersistedRunStateUpdate } from '../../persistence/run-state/PersistedRunStateWriter.mjs';
 import { toHostResponse, workerBindingKeyForStep } from '../../runner/host-requests.mjs';
-import { assertSafeStepId, writeOutputCommandForStep } from '../../runner/runner-command-builder.mjs';
+import { renderCurrentRequestInstructions } from '../../runner/current-request-instructions.mjs';
+import { assertRunnerHostResponseSchema } from '../../persistence/run-state/schema/runner-host-response-schema.mjs';
+import { assertSafeStepId, reportStopCommandForStep, resolveStopCommandForStep, writeOutputCommandForStep } from '../../runner/runner-command-builder.mjs';
 import { readText } from '../../persistence/run-state/atomic-file.mjs';
 import { assertFreshTokenAuthority, assertMatchingTokenAuthority, buildTokenLease, renewTokenLease } from '../../persistence/run-state/lease-authority.mjs';
 import { appendHistoryOnce, recoverDurableCommit } from '../../persistence/run-state/durable-commit.mjs';
 import { readPersistedRunState } from '../../persistence/run-state/PersistedRunStateReader.mjs';
-import { defaultWorkflowPath, ensureRunFiles, migrateLegacyWorkflowRunsRootIfNeeded, pathExists, resolveRunPaths } from '../../persistence/run-state/paths.mjs';
-import { createRunIndexEntry, readRunsIndex, runsIndexPathsForRoot, upsertRunIndexEntry } from '../../persistence/run-state/run-index.mjs';
+import { defaultWorkflowPath, ensureRunDirectories, ensureRunFiles, initialRunBaton, migrateLegacyWorkflowRunsRootIfNeeded, pathExists, resolveRunPaths } from '../../persistence/run-state/paths.mjs';
+import { createRunIndexEntry, upsertRunIndexEntry } from '../../persistence/run-state/run-index.mjs';
+import { readRunAuthorityWithLegacyFallback, runAuthorityFromIndexEntry, writeRunAuthority } from '../../persistence/run-state/run-authority.mjs';
+import { durableFileSignature } from '../../persistence/run-state/file-signature.mjs';
 import { withRunStateLock } from '../../persistence/run-state/lock.mjs';
 import { claimWorkflowRunAtRoot, deleteWorkflowRunAtRoot, heartbeatWorkflowRunAtRoot, listWorkflowRunsAtRoot, registerWorkflowRunAtRoot, summarizeWorkflowRuns as summarizeWorkflowRunsAtRoot } from '../../persistence/run-state/workflow-runs.mjs';
 import { publicErrorMessage } from '../../public-error.mjs';
 import { assertAbsoluteWorkflowPath, resolveAbsoluteWorkflowPath } from '../../workflow-path-boundary.mjs';
-import { isRecoverableWorkerBlockerOutput, publicRecoverableBlockerDetails, publicRecoveryResolutionDetails } from '../../runtime/recoverable-worker-blocker.mjs';
-import { applyOutputToBatonState } from '../../runtime/baton-state.mjs';
+import { publicNonBlockingStopDetails, publicStopResolutionDetails } from '../../runtime/non-blocking-stop.mjs';
 import { read, readAllowedRoles, readOutputSchemas } from '../../persistence/workflow-resources/workflow-file-reader.mjs';
 import { defaultRepositoryRootForWorkflow } from '../../persistence/workflow-resources/resource-resolver.mjs';
 import { createWorkflowStartupValidator } from '../../workflow-startup-validation.mjs';
@@ -48,7 +51,6 @@ const validateWorkflowStartup = createWorkflowStartupValidator({
 
 const workflowRunnerCommand = createWorkflowRunnerCommand({
   readFile,
-  stat,
   join,
   resolve,
   applyWorkflowOutput,
@@ -69,9 +71,13 @@ const workflowRunnerCommand = createWorkflowRunnerCommand({
   artifactPathBoundaryErrors,
   writePersistedRunStateUpdate,
   toHostResponse,
+  renderCurrentRequestInstructions,
+  assertRunnerHostResponseSchema,
   workerBindingKeyForStep,
   assertSafeStepId,
   writeOutputCommandForStep,
+  reportStopCommandForStep,
+  resolveStopCommandForStep,
   readText,
   assertFreshTokenAuthority,
   assertMatchingTokenAuthority,
@@ -80,22 +86,24 @@ const workflowRunnerCommand = createWorkflowRunnerCommand({
   appendHistoryOnce,
   recoverDurableCommit,
   readPersistedRunState,
+  ensureRunDirectories,
   ensureRunFiles,
+  initialRunBaton,
   migrateLegacyWorkflowRunsRootIfNeeded,
   pathExists,
   resolveRunPaths,
   createRunIndexEntry,
-  readRunsIndex,
-  runsIndexPathsForRoot,
   upsertRunIndexEntry,
+  readRunAuthorityWithLegacyFallback,
+  runAuthorityFromIndexEntry,
+  writeRunAuthority,
+  durableFileSignature,
   withRunStateLock,
   publicErrorMessage,
   assertAbsoluteWorkflowPath,
   validateWorkflowStartup,
-  isRecoverableWorkerBlockerOutput,
-  publicRecoverableBlockerDetails,
-  publicRecoveryResolutionDetails,
-  applyOutputToBatonState,
+  publicNonBlockingStopDetails,
+  publicStopResolutionDetails,
 });
 
 const workflowRuns = createWorkflowRuns({
@@ -117,6 +125,8 @@ export const {
   loadInstructions,
   movePointer,
   next,
+  reportStop,
+  resolveStop,
   writeOutput,
 } = workflowRunnerCommand;
 

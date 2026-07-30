@@ -3,14 +3,16 @@
   "version": 1,
   "start": "self_check",
   "done": "done",
-  "blocked": "blocked",
+  "limit_reached": "limit_reached",
   "loopPolicies": {
     "self_check": {
       "steps": [
         "self_check"
       ],
+      "entry": "self_check",
+      "boundary": "self_check",
       "maxIterations": 2,
-      "onLimit": "blocked"
+      "onLimit": "limit_reached"
     }
   },
   "steps": {
@@ -22,13 +24,14 @@
       },
       "output": {
         "template": "output.md",
-        "schema": "schemas/routing-review.schema.json"
+        "schema": "schemas/loop-review.schema.json"
       },
       "next": {
         "match": "${{ output.outcome }}",
         "cases": {
           "ready": "done",
-          "retry": "self_check"
+          "retry": "self_check",
+          "limit_reached": "limit_reached"
         }
       }
     },
@@ -39,8 +42,8 @@
         "prompt": "Finished."
       }
     },
-    "blocked": {
-      "name": "Blocked",
+    "limit_reached": {
+      "name": "Limit reached",
       "kind": "done",
       "input": {
         "prompt": "Loop limit reached."

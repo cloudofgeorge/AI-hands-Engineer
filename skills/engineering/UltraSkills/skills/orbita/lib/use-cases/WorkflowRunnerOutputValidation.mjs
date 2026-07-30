@@ -1,6 +1,8 @@
 /** Workflow-runner output validation policy over IO-free runtime helpers. */
 import { validateAgainstOutputSchema } from '../runtime/output/output-schema-validation.mjs';
 import { workerOutputSchema } from '../runtime/output/worker-output-schema.mjs';
+import { assertCompletedStepOutput } from '../runtime/output/worker-output.mjs';
+import { validateApprovalDecision } from '../runtime/approval-contract.mjs';
 
 export function validateRunnerAcceptedOutput({
   requestStepId,
@@ -11,6 +13,13 @@ export function validateRunnerAcceptedOutput({
   artifactPathErrors = [],
 } = {}) {
   if (!step) throw new Error(`unknown current workflow step id: ${requestStepId}`);
+  assertCompletedStepOutput(output);
+  if (requestAction === 'wait_for_approval' || step.kind === 'approval') {
+    if (requestAction !== 'wait_for_approval' || step.kind !== 'approval') {
+      throw new Error(`workflow request '${requestStepId}' action/step kind mismatch for approval output`);
+    }
+    return validateApprovalDecision(output);
+  }
   const schemaRef = step.output?.schema;
   const loaded = schemaRef
     ? (resources?.outputSchemas instanceof Map ? resources.outputSchemas.get(schemaRef) : resources?.outputSchemas?.[schemaRef])

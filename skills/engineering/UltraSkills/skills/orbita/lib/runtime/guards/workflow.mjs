@@ -8,9 +8,11 @@ export function assertLoadedWorkflowAndBaton(workflowDoc, batonDoc, options = {}
   if (!isCompiledWorkflowForRuntime(workflow, options)) {
     validateWorkflowDocument(workflow, workflowSemanticValidationOptions(options));
   }
-  const batonData = typeof batonDoc?.toJSON === 'function' ? batonDoc.toJSON() : structuredClone(batonDoc);
+  const batonData = typeof batonDoc?.toJSON === 'function'
+    ? batonDoc.toJSON()
+    : (Object.isFrozen(batonDoc) && Object.isFrozen(batonDoc?.state) ? batonDoc : structuredClone(batonDoc));
   validateBatonDataAgainstWorkflow(batonData, workflow);
-  const cursorStepId = Array.isArray(batonData.cursor) ? batonData.cursor[0] : batonData.cursor;
+  const cursorStepId = batonData.cursor;
   const cursorStep = structuredClone(workflow.steps[cursorStepId]);
   return { workflow, baton: batonData, cursorStep };
 }

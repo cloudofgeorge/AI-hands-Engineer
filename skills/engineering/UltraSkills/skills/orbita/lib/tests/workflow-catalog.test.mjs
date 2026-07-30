@@ -99,11 +99,12 @@ test('workflow catalog lists checked-in workflows from top-level descriptions', 
   const parsed = JSON.parse(result.stdout);
   const names = parsed.workflows.map((workflow) => workflow.name);
 
-  assert.deepEqual(names, ['dev-harness', 'research-critic', 'workflow-authoring']);
+  assert.deepEqual(names, ['dev-harness', 'frontend-ui-pr-smoke', 'research-critic', 'workflow-authoring']);
   assert.deepEqual(
     parsed.workflows.map((workflow) => workflow.path),
     [
       path.join(root, 'workflows/dev-harness/workflow.toml'),
+      path.join(root, 'workflows/frontend-ui-pr-smoke/workflow.toml'),
       path.join(root, 'workflows/research-critic/workflow.toml'),
       path.join(root, 'workflows/workflow-authoring/workflow.json'),
     ],
@@ -112,6 +113,7 @@ test('workflow catalog lists checked-in workflows from top-level descriptions', 
     parsed.workflows.map((workflow) => [workflow.sourceId, workflow.rootOrder, workflow.workflowRef, workflow.relativePath, workflow.resolveEligible]),
     [
       ['built-in', 0, 'built-in:dev-harness', 'dev-harness', true],
+      ['built-in', 0, 'built-in:frontend-ui-pr-smoke', 'frontend-ui-pr-smoke', true],
       ['built-in', 0, 'built-in:research-critic', 'research-critic', true],
       ['built-in', 0, 'built-in:workflow-authoring', 'workflow-authoring', true],
     ],
@@ -176,6 +178,7 @@ test('workflow catalog reads ordered TOML roots and resolves exact refs', () => 
     workflows.map((workflow) => [workflow.workflowRef, workflow.sourceId, workflow.rootOrder, workflow.relativePath, workflow.path]),
     [
       ['built-in:dev-harness', 'built-in', 0, 'dev-harness', path.join(root, 'workflows/dev-harness/workflow.toml')],
+      ['built-in:frontend-ui-pr-smoke', 'built-in', 0, 'frontend-ui-pr-smoke', path.join(root, 'workflows/frontend-ui-pr-smoke/workflow.toml')],
       ['built-in:research-critic', 'built-in', 0, 'research-critic', path.join(root, 'workflows/research-critic/workflow.toml')],
       ['built-in:workflow-authoring', 'built-in', 0, 'workflow-authoring', path.join(root, 'workflows/workflow-authoring/workflow.json')],
       ['alpha:alpha-flow', 'alpha', 1, 'alpha-flow', alphaPath],
@@ -339,10 +342,10 @@ test('workflow catalog read errors redact configured workflow paths', () => {
   assert.doesNotMatch(listed.stderr, new RegExp(configPath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
 });
 
-test('workflow catalog rejects invalid config entry matrix before listing', () => {
-  const matrixDir = path.join(tempDir, 'invalid-config-matrix');
-  const rootA = path.join(matrixDir, 'root-a');
-  const rootB = path.join(matrixDir, 'root-b');
+test('workflow catalog rejects invalid config entries before listing', () => {
+  const casesDir = path.join(tempDir, 'invalid-config-cases');
+  const rootA = path.join(casesDir, 'root-a');
+  const rootB = path.join(casesDir, 'root-b');
   mkdirSync(rootA, { recursive: true });
   mkdirSync(rootB, { recursive: true });
   const cases = [
@@ -366,13 +369,13 @@ test('workflow catalog rejects invalid config entry matrix before listing', () =
     },
     {
       name: 'unreadable path',
-      content: nestedWorkflowConfig([{ sourceId: 'unreadable-path', path: path.join(matrixDir, 'missing') }]),
+      content: nestedWorkflowConfig([{ sourceId: 'unreadable-path', path: path.join(casesDir, 'missing') }]),
       match: /workflow root 'unreadable-path' is not readable/,
     },
   ];
 
   for (const item of cases) {
-    const configPath = path.join(matrixDir, `${item.name.replaceAll(' ', '-')}.toml`);
+    const configPath = path.join(casesDir, `${item.name.replaceAll(' ', '-')}.toml`);
     writeFileSync(configPath, item.content);
     const listed = runCatalog(['list', '--json', '--config', configPath]);
     assert.equal(listed.status, 1, item.name);

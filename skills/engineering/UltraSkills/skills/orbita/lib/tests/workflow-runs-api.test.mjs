@@ -10,6 +10,8 @@ import { claimWorkflowRunAtRoot, deleteWorkflowRunAtRoot, heartbeatWorkflowRunAt
 import { buildTokenLease, formatLeaseTokenEntropy } from '../persistence/run-state/lease-authority.mjs';
 import { createRunIndexEntry, readRunsIndex, runsIndexPathsForRoot } from '../persistence/run-state/run-index.mjs';
 import { resolveRunPaths, workflowRunsRoot } from '../persistence/run-state/paths.mjs';
+import { readRunAuthority, writeRunAuthority } from '../persistence/run-state/run-authority.mjs';
+import { withRunStateLock } from '../persistence/run-state/lock.mjs';
 import { makeTestDir } from './helpers/test-temp-dir.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../..');
@@ -275,6 +277,96 @@ test('workflow runs API creates accepted safe run id with public metadata only',
   assert.equal(listed[0].runId, runId);
   assert.equal('runDir' in listed[0], false);
   assert.equal('runsRoot' in listed[0], false);
+  const authority = await readRunAuthority(resolveRunPaths({ runId, workflowPath: defaultWorkflow, runsRoot }));
+  assert.equal(authority.workflow.identity, 'dev-harness');
+  assert.equal(authority.status, 'running');
+  assert.equal(authority.workerLease, null);
+});
+
+test('workflow runs list overlays canonical per-run authority on the catalog projection', async () => {
+  const runId = `${runPrefix}canonical-list-overlay`;
+  const paths = resolveRunPaths({ runId, workflowPath: defaultWorkflow, runsRoot });
+  await registerWorkflowRunAtRoot({ runsRoot, runId, workflowPath: defaultWorkflow });
+  const authority = await readRunAuthority(paths);
+  await withRunStateLock(paths, () => writeRunAuthority(paths, {
+    ...authority,
+    status: 'done',
+    updatedAt: '2026-06-01T10:00:01.000Z',
+    workerLease: buildTokenLease({ token: 'canonical-list-token', leaseMs: 60_000, now: new Date('2026-06-01T10:00:00.000Z') }),
+  }));
+
+  const index = await readRunsIndex(runsIndexPathsForRoot(runsRoot));
+  assert.equal(index.runs[runId].status, 'running');
+  assert.equal(index.runs[runId].workerLease, null);
+  const listed = (await listWorkflowRunsAtRoot({ runsRoot, now: new Date('2026-06-01T10:00:30.000Z') }))
+    .find((run) => run.runId === runId);
+  assert.equal(listed.status, 'done');
+  assert.equal(listed.occupancy.state, 'occupied');
+});
+
+test('workflow runs API stores claim harness privately only after a successful claim and clears it on a harnessless claim', async () => {
+  const runId = `${runPrefix}harness-binding`;
+  await registerWorkflowRunAtRoot({
+    runsRoot,
+    runId,
+    workflowPath: defaultWorkflow,
+    harness: 'codex',
+  });
+
+  let index = await readRunsIndex(runsIndexPathsForRoot(runsRoot));
+  assert.equal(Object.hasOwn(index.runs[runId], 'claimContext'), false);
+
+  const claimed = await claimWorkflowRunAtRoot({
+    runsRoot,
+    runId,
+    harness: 'OtHeR-HaRnEsS',
+    leaseMs: 60_000,
+    now: new Date('2026-06-01T10:00:00.000Z'),
+  });
+  assert.equal(claimed.ok, true);
+  index = await readRunsIndex(runsIndexPathsForRoot(runsRoot));
+  assert.deepEqual(index.runs[runId].claimContext, { harness: 'other-harness' });
+  const listed = (await listWorkflowRunsAtRoot({ runsRoot })).find((run) => run.runId === runId);
+  assert.equal(Object.hasOwn(listed, 'claimContext'), false);
+
+  await claimWorkflowRunAtRoot({
+    runsRoot,
+    runId,
+    leaseToken: claimed.leaseToken,
+    leaseMs: 60_000,
+    now: new Date('2026-06-01T10:00:01.000Z'),
+  });
+  index = await readRunsIndex(runsIndexPathsForRoot(runsRoot));
+  assert.equal(Object.hasOwn(index.runs[runId], 'claimContext'), false);
+});
+
+test('workflow runs claim harness uses the same bounded identifier grammar as workflow agent_runtime keys', async () => {
+  const validRunId = `${runPrefix}harness-grammar-valid`;
+  const valid = await registerWorkflowRunAtRoot({
+    runsRoot,
+    runId: validRunId,
+    workflowPath: defaultWorkflow,
+    claim: true,
+    harness: 'CoDeX+Remote/V2',
+    leaseMs: 60_000,
+  });
+  assert.equal(typeof valid.leaseToken, 'string');
+  assert.deepEqual(
+    (await readRunsIndex(runsIndexPathsForRoot(runsRoot))).runs[validRunId].claimContext,
+    { harness: 'codex+remote/v2' },
+  );
+
+  await assert.rejects(
+    () => registerWorkflowRunAtRoot({
+      runsRoot,
+      runId: `${runPrefix}harness-grammar-invalid`,
+      workflowPath: defaultWorkflow,
+      claim: true,
+      harness: 'codex remote',
+      leaseMs: 60_000,
+    }),
+    /claimContext.*harness.*must match pattern|harness.*must match pattern/i,
+  );
 });
 
 test('workflow-runs create rejects relative workflow paths clearly', async () => {
@@ -375,12 +467,32 @@ test('workflow runs API rejects occupied fresh lease owned by someone else', asy
   const now = new Date('2026-06-01T10:00:00.000Z');
   await registerWorkflowRunAtRoot({ runsRoot, runId, claim: true, owner: 'alice', harness: 'generic', sessionId: 'session-a', leaseMs: 60_000, now });
 
-  const response = await claimWorkflowRunAtRoot({ runsRoot, runId, owner: 'bob', harness: 'generic', sessionId: 'session-b', now: new Date('2026-06-01T10:00:10.000Z') });
+  const response = await claimWorkflowRunAtRoot({ runsRoot, runId, owner: 'bob', harness: 'other-harness', sessionId: 'session-b', now: new Date('2026-06-01T10:00:10.000Z') });
 
   assert.equal(response.ok, false);
   assert.equal(response.reason, 'occupied');
   assert.equal(response.run.occupancy.state, 'occupied');
   assert.equal('workerLease' in response.run, false);
+  assert.deepEqual((await readRunsIndex(runsIndexPathsForRoot(runsRoot))).runs[runId].claimContext, { harness: 'generic' });
+});
+
+test('workflow runs API requires explicit takeover for occupied fresh leases', async () => {
+  const runId = `${runPrefix}occupied-takeover`;
+  const initial = await registerWorkflowRunAtRoot({ runsRoot, runId, claim: true, owner: 'alice', harness: 'generic', sessionId: 'session-a', leaseMs: 60_000, now: new Date('2026-06-01T10:00:00.000Z') });
+
+  const response = await claimWorkflowRunAtRoot({ runsRoot, runId, owner: 'bob', harness: 'portable', sessionId: 'session-b', leaseMs: 60_000, takeover: true, now: new Date('2026-06-01T10:00:10.000Z') });
+
+  assert.equal(response.ok, true);
+  assert.equal(response.claimed, true);
+  assert.equal(response.run.occupancy.state, 'occupied');
+  assert.equal(typeof response.leaseToken, 'string');
+  assert.notEqual(response.leaseToken, initial.leaseToken);
+  assert.deepEqual((await readRunsIndex(runsIndexPathsForRoot(runsRoot))).runs[runId].claimContext, { harness: 'portable' });
+  assert.equal((await readRunAuthority(resolveRunPaths({ runId, runsRoot }))).workerLease.tokenEpoch, 2);
+
+  const oldHolder = await heartbeatWorkflowRunAtRoot({ runsRoot, runId, leaseToken: initial.leaseToken, now: new Date('2026-06-01T10:00:11.000Z') });
+  assert.equal(oldHolder.ok, false);
+  assert.equal(oldHolder.reason, 'occupied');
 });
 
 test('workflow runs API requires explicit takeover for stale tokenless claims', async () => {
@@ -392,6 +504,7 @@ test('workflow runs API requires explicit takeover for stale tokenless claims', 
   assert.equal(stale.ok, false);
   assert.equal(stale.reason, 'stale');
   assert.equal(stale.run.occupancy.state, 'stale');
+  assert.deepEqual((await readRunsIndex(runsIndexPathsForRoot(runsRoot))).runs[runId].claimContext, { harness: 'generic' });
 
   const response = await claimWorkflowRunAtRoot({ runsRoot, runId, owner: 'bob', harness: 'portable', sessionId: 'session-b', leaseMs: 60_000, takeover: true, now: new Date('2026-06-01T10:00:02.000Z') });
 
@@ -399,6 +512,8 @@ test('workflow runs API requires explicit takeover for stale tokenless claims', 
   assert.equal(response.claimed, true);
   assert.equal(response.run.occupancy.state, 'occupied');
   assert.equal('workerLease' in response.run, false);
+  assert.deepEqual((await readRunsIndex(runsIndexPathsForRoot(runsRoot))).runs[runId].claimContext, { harness: 'portable' });
+  assert.equal((await readRunAuthority(resolveRunPaths({ runId, runsRoot }))).workerLease.tokenEpoch, 2);
 });
 
 test('workflow runs API create-with-claim issues token but stores only hash authority', async () => {
@@ -408,7 +523,9 @@ test('workflow runs API create-with-claim issues token but stores only hash auth
   assert.equal(typeof response.leaseToken, 'string');
   assert.equal('workerLease' in response, false);
   const index = await readRunsIndex(runsIndexPathsForRoot(runsRoot));
-  const storedLease = index.runs[runId].workerLease;
+  assert.deepEqual(index.runs[runId].claimContext, { harness: 'portable' });
+  const authority = await readRunAuthority(resolveRunPaths({ runId, runsRoot }));
+  const storedLease = authority.workerLease;
   assert.deepEqual(Object.keys(storedLease).sort(), ['leaseExpiresAt', 'tokenEpoch', 'tokenHash']);
   assert.match(storedLease.tokenHash, /^[0-9a-f]{64}$/);
   assert.equal(storedLease.tokenEpoch, 1);
@@ -456,13 +573,15 @@ test('workflow runs API heartbeat renews matching worker lease', async () => {
   const runId = `${runPrefix}heartbeat-api`;
   const claim = await registerWorkflowRunAtRoot({ runsRoot, runId, claim: true, owner: 'alice', harness: 'portable', sessionId: 'session-a', leaseMs: 1_000, now: new Date('2026-06-01T10:00:00.000Z') });
 
-  const response = await heartbeatWorkflowRunAtRoot({ runsRoot, runId, leaseToken: claim.leaseToken, owner: 'alice', harness: 'portable', sessionId: 'session-a', leaseMs: 60_000, now: new Date('2026-06-01T10:00:00.500Z') });
+  const response = await heartbeatWorkflowRunAtRoot({ runsRoot, runId, leaseToken: claim.leaseToken, owner: 'alice', harness: 'ignored-heartbeat-harness', sessionId: 'session-a', leaseMs: 60_000, now: new Date('2026-06-01T10:00:00.500Z') });
 
   assert.equal(response.ok, true);
   assert.equal('workerLease' in response.run, false);
   assert.equal(response.run.occupancy.leaseExpiresAt, '2026-06-01T10:01:00.500Z');
-  const storedLease = (await readRunsIndex(runsIndexPathsForRoot(runsRoot))).runs[runId].workerLease;
+  const storedRun = (await readRunsIndex(runsIndexPathsForRoot(runsRoot))).runs[runId];
+  const storedLease = storedRun.workerLease;
   assert.deepEqual(Object.keys(storedLease).sort(), ['leaseExpiresAt', 'tokenEpoch', 'tokenHash']);
+  assert.deepEqual(storedRun.claimContext, { harness: 'portable' });
 });
 
 test('workflow runs API rejects tokenless renewal without mutating lease', async () => {
@@ -635,7 +754,7 @@ test('workflow runs API rejects symlinked runs root for create without write esc
   await assertSymlinkedRunsRootRejected((symlinkedRunsRoot) => registerWorkflowRunAtRoot({
     runsRoot: symlinkedRunsRoot,
     runId: `${runPrefix}symlink-create`,
-    title: 'Blocked create',
+    title: 'Rejected create',
   }));
 });
 
@@ -651,7 +770,7 @@ test('workflow runs API rejects symlinked runs root for claim without write esca
 test('workflow runs index operations reject symlinked runs root without write escape', async () => {
   await assertSymlinkedRunsRootRejected((symlinkedRunsRoot) => createRunIndexEntry(
     resolveRunPaths({ runId: `${runPrefix}symlink-index`, workflowPath: defaultWorkflow, runsRoot: symlinkedRunsRoot }),
-    { title: 'Blocked index write' },
+    { title: 'Rejected index write' },
   ));
 });
 

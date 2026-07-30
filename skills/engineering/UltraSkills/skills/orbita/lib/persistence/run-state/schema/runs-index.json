@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/MrFlashAccount/Skills/schemas/workflow/runs-index",
   "title": "Workflow Runs Index",
-  "description": "Persistent Orbita workflow runs index contract. Entries expose only the public runId and safe run metadata; private run directories/roots and raw prompts are not part of this shape.",
+  "description": "Orbita workflow runs discovery/catalog projection. Per-run authority.json is canonical when present. Entries expose only the public runId and safe run metadata; private run directories/roots and raw prompts are not part of this shape.",
   "type": "object",
   "required": ["schemaVersion", "topologyVersion", "runs"],
   "properties": {
@@ -26,6 +26,12 @@
       "maxLength": 256,
       "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:@/-]{0,255}$"
     },
+    "harnessIdentifier": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@/+-]{0,127}$"
+    },
     "runIndexEntry": {
       "type": "object",
       "required": ["runId", "workflow", "status", "createdAt", "updatedAt", "workerLease"],
@@ -47,6 +53,14 @@
         "updatedAt": { "type": "string", "minLength": 1 },
         "taskKey": { "$ref": "#/$defs/safeTextMetadata" },
         "taskFingerprint": { "$ref": "#/$defs/safeTextMetadata" },
+        "claimContext": {
+          "type": "object",
+          "required": ["harness"],
+          "properties": {
+            "harness": { "$ref": "#/$defs/harnessIdentifier" }
+          },
+          "additionalProperties": false
+        },
         "workerLease": {
           "oneOf": [
             { "type": "null" },

@@ -1,0 +1,48 @@
+:root {
+  color-scheme: dark;
+  --surface-foundation: #14131a;
+  --surface-top: #191720;
+  --surface-lane: #201d29;
+  --surface-card: #292632;
+  --surface-selected: #332f40;
+  --text-primary: #f4f0f7;
+  --text-secondary: #c2b9cc;
+  --text-muted: #afa6ba;
+  --border: #4a4357;
+  --border-strong: #5c536a;
+  --scrollbar-thumb: var(--border);
+  --scrollbar-thumb-hover: var(--border-strong);
+  --scrollbar-track: transparent;
+  --focus: #cba6f7;
+  --success: #a6e3a1;
+  --error: #f38ba8;
+  --warning: #fab387;
+  --waiting: var(--warning);
+  --running: var(--focus);
+  --needs-help: var(--error);
+  --degraded: #9a92a8;
+  --done: var(--success);
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --layer-sticky: 10;
+  --layer-overlay: 40;
+  --layer-popover: 50;
+  --layer-nested-overlay: 60;
+}
+
+@theme inline {
+  --color-background: var(--surface-foundation);
+  --color-foreground: var(--text-primary);
+  --color-border: var(--border);
+  --color-ring: var(--focus);
+  --color-success: var(--success);
+  --color-error: var(--error);
+  --color-warning: var(--warning);
+  --radius-sm: var(--radius-sm);
+  --radius-md: var(--radius-md);
+}

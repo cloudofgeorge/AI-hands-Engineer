@@ -1,16 +1,22 @@
 {
   "name": "fixture-approval-first-fanout",
   "version": 1,
-  "start": "intake_approval",
+  "start": "prepare",
   "done": "done",
   "steps": {
     "intake_approval": {
       "name": "Intake Approval",
       "kind": "approval",
       "input": {
-        "prompt": "Accept the startup request before worker execution."
+        "summary": "${{ input.prepare.outcome }}"
       },
-      "next": "prepare"
+      "next": {
+        "match": "${{ output.approval }}",
+        "cases": {
+          "approved": "implementation",
+          "rejected": "prepare"
+        }
+      }
     },
     "prepare": {
       "name": "Prepare",
@@ -22,62 +28,32 @@
         "template": "output.md",
         "schema": "schemas/routing-ready.schema.json"
       },
-      "next": [
-        "branch_a",
-        "branch_b"
-      ]
+      "next": "intake_approval"
     },
-    "branch_a": {
-      "name": "Branch A",
-      "kind": "worker",
+    "implementation": {
+      "name": "Implementation owner",
+      "kind": "fanout",
       "input": {
+        "branches": ["branch_a", "branch_b"],
         "prompt": [
-          "Do branch A.",
-          "",
-          "Prepare result:",
-          "${{ input.prepare.results }}"
+          "Synthesize current branch results.",
+          "Branch A result: ${{ input.branch_a.results | default: \"branch A not selected\" }}",
+          "Branch B result: ${{ input.branch_b.results | default: \"branch B not selected\" }}"
         ]
       },
       "output": {
         "template": "output.md",
         "schema": "schemas/routing-ready.schema.json"
       },
-      "next": "join"
-    },
-    "branch_b": {
-      "name": "Branch B",
-      "kind": "worker",
-      "input": {
-        "prompt": [
-          "Do branch B.",
-          "",
-          "Prepare result:",
-          "${{ input.prepare.results }}"
-        ]
-      },
-      "output": {
-        "template": "output.md",
-        "schema": "schemas/routing-ready.schema.json"
-      },
-      "next": "join"
-    },
-    "join": {
-      "name": "Join",
-      "kind": "worker",
-      "input": {
-        "prompt": [
-          "Join branch results.",
-          "",
-          "Branch A result:",
-          "${{ input.branch_a.results }}",
-          "",
-          "Branch B result:",
-          "${{ input.branch_b.results }}"
-        ]
-      },
-      "output": {
-        "template": "output.md",
-        "schema": "schemas/routing-ready.schema.json"
+      "branches": {
+        "branch_a": {
+          "input": { "prompt": "Do branch A.\nPrepare result:\n${{ input.prepare.results }}" },
+          "output": { "template": "output.md", "schema": "schemas/routing-ready.schema.json" }
+        },
+        "branch_b": {
+          "input": { "prompt": "Do branch B.\nPrepare result:\n${{ input.prepare.results }}" },
+          "output": { "template": "output.md", "schema": "schemas/routing-ready.schema.json" }
+        }
       },
       "next": "final_approval"
     },
@@ -85,17 +61,13 @@
       "name": "Final Approval",
       "kind": "approval",
       "input": {
-        "prompt": [
-          "Approve final result.",
-          "",
-          "Join result:",
-          "${{ input.join.results }}"
-        ]
+        "summary": "${{ input.implementation.outcome }}"
       },
       "next": {
         "match": "${{ output.approval }}",
         "cases": {
-          "approved": "done"
+          "approved": "done",
+          "rejected": "implementation"
         }
       }
     },

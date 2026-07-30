@@ -9,6 +9,7 @@ import { assertWorkflowSchema } from '../../file-contracts/workflow-document-sch
 import { readWorkflowDocument } from './workflow-document-reader.mjs';
 import { assertBatonSchema, batonSchema } from '../../file-contracts/baton/baton-schema.mjs';
 import { compileWorkflowForRuntime } from '../../runtime/compiled-workflow.mjs';
+import { isValidatedPersistedBaton } from '../validated-baton.mjs';
 
 const compiledRuntimeCache = new Map();
 const COMPILED_RUNTIME_CACHE_MAX_ENTRIES = 64;
@@ -35,12 +36,16 @@ function templateRefs(workflow) {
   const refs = [];
   const seen = new Set();
   for (const step of Object.values(workflow?.steps ?? {})) {
-    for (const [fieldName, ref] of [
+    const refsForStep = [
       ['input', step?.input?.template],
       ['output', step?.output?.template],
       ['input', step?.worker?.input?.template],
       ['output', step?.worker?.output?.template],
-    ]) {
+    ];
+    for (const branch of Object.values(step?.branches ?? {})) {
+      refsForStep.push(['input', branch?.input?.template], ['output', branch?.output?.template]);
+    }
+    for (const [fieldName, ref] of refsForStep) {
       if (!ref || seen.has(`${fieldName}:${ref}`)) continue;
       seen.add(`${fieldName}:${ref}`);
       refs.push({ ref, fieldName });
@@ -52,8 +57,11 @@ function templateRefs(workflow) {
 function schemaRefs(workflow) {
   const refs = new Set();
   for (const step of Object.values(workflow?.steps ?? {})) {
-    if (step?.output?.schema) refs.add(step.output.schema);
+    if (step?.kind !== 'approval' && step?.output?.schema) refs.add(step.output.schema);
     if (step?.worker?.output?.schema) refs.add(step.worker.output.schema);
+    for (const branch of Object.values(step?.branches ?? {})) {
+      if (branch?.output?.schema) refs.add(branch.output.schema);
+    }
   }
   return refs;
 }
@@ -63,8 +71,8 @@ function roleNames(workflow) {
   for (const step of Object.values(workflow?.steps ?? {})) {
     if (step?.input?.role) roles.add(step.input.role);
     if (step?.worker?.input?.role) roles.add(step.worker.input.role);
-    for (const obligation of step?.sharding?.obligations ?? []) {
-      if (typeof obligation?.reviewer_role === 'string' && obligation.reviewer_role.length > 0) roles.add(obligation.reviewer_role);
+    for (const branch of Object.values(step?.branches ?? {})) {
+      if (branch?.input?.role) roles.add(branch.input.role);
     }
   }
   return roles;
@@ -83,8 +91,7 @@ function resolveSafeRunArtifactPath({ runDir, artifactPath }) {
   return candidate;
 }
 
-export function readRunArtifactContent({ runDir, artifactPath }) {
-  if (!runDir) throw new WorkflowRuntimeError('workflow prompt render failed: run directory is required to read artifact content');
+function resolveExistingRunArtifactPath({ runDir, artifactPath }) {
   const root = path.resolve(runDir);
   const candidate = resolveSafeRunArtifactPath({ runDir, artifactPath });
   if (!existsSync(candidate)) {
@@ -95,6 +102,12 @@ export function readRunArtifactContent({ runDir, artifactPath }) {
   if (!isInside(realCandidate, realRoot)) {
     throw new WorkflowRuntimeError(`workflow prompt render failed: artifact path cannot escape run directory via symlink: ${artifactPath}`);
   }
+  return realCandidate;
+}
+
+export function readRunArtifactContent({ runDir, artifactPath }) {
+  if (!runDir) throw new WorkflowRuntimeError('workflow prompt render failed: run directory is required to read artifact content');
+  const realCandidate = resolveExistingRunArtifactPath({ runDir, artifactPath });
   return readFileSync(realCandidate, 'utf8');
 }
 
@@ -106,6 +119,11 @@ function artifactReaderForRunDir(runDir) {
 function artifactPathResolverForRunDir(runDir) {
   if (!runDir) return undefined;
   return (artifactPath) => resolveSafeRunArtifactPath({ runDir, artifactPath });
+}
+
+function existingArtifactPathResolverForRunDir(runDir) {
+  if (!runDir) return undefined;
+  return (artifactPath) => resolveExistingRunArtifactPath({ runDir, artifactPath });
 }
 
 function isDeferredMissingResource(error) {
@@ -175,6 +193,7 @@ export function loadWorkflowResources({ workflow, workflowPath, repositoryRoot =
     runDir: runDir ? path.resolve(runDir) : undefined,
     readRunArtifact: artifactReaderForRunDir(runDir),
     resolveRunArtifactPath: artifactPathResolverForRunDir(runDir),
+    resolveExistingRunArtifactPath: existingArtifactPathResolverForRunDir(runDir),
   };
 }
 
@@ -183,6 +202,7 @@ function runScopedResources(runDir) {
     runDir: runDir ? path.resolve(runDir) : undefined,
     readRunArtifact: artifactReaderForRunDir(runDir),
     resolveRunArtifactPath: artifactPathResolverForRunDir(runDir),
+    resolveExistingRunArtifactPath: existingArtifactPathResolverForRunDir(runDir),
   };
 }
 
@@ -242,7 +262,7 @@ function loadCompiledWorkflowPackage({ workflowPath }) {
 
 export function loadWorkflowRuntime({ workflowPath, batonPath, baton }) {
   const batonDoc = baton ?? readJson(batonPath, 'baton');
-  assertBatonSchema(batonDoc);
+  if (!isValidatedPersistedBaton(batonDoc)) assertBatonSchema(batonDoc);
   const compiledPackage = loadCompiledWorkflowPackage({ workflowPath });
   const resources = {
     ...compiledPackage.staticResources,

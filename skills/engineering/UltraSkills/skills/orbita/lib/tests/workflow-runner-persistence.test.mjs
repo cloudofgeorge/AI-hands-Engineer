@@ -38,14 +38,14 @@ const workflowDoc = {
         kind: 'worker',
         input: { prompt: 'Prepare branch.' },
         output: { template: 'output.md', schema: 'output.schema.json' },
-        next: ['branch_a', 'branch_b'],
+        next: 'branch_a',
       },
       branch_a: {
         name: 'Branch A',
         kind: 'worker',
         input: { prompt: 'Run branch A.\nPrepare output:\n${{ input.prepare }}' },
         output: { template: 'output.md', schema: 'output.schema.json' },
-        next: 'join',
+        next: 'branch_b',
       },
       branch_b: {
         name: 'Branch B',
@@ -243,503 +243,95 @@ test('runner: continue reuses saved custom workflow when --workflow is omitted',
   assert.equal(response.baton.state.prepare.results[0].summary, 'prepared with saved workflow');
 });
 
-test('runner: wait_for_approval request accepts request-specific host output JSON', async () => {
-  const { runId, runDir } = await runCase('approval-generic-output');
-  const workflowPath = path.join(tempDir, 'approval-generic-output-workflow.json');
+function typedApprovalWorkflow() {
   const approvalWorkflow = structuredClone(workflowDoc);
-  approvalWorkflow.start = 'choose_path';
-  approvalWorkflow.steps = {
-    choose_path: {
-      name: 'Choose path',
-      kind: 'approval',
-      input: { prompt: 'Ask the user to choose option_a, option_b, or free-form blocked reason.' },
-      next: { match: '${{ output.choice }}', cases: { option_a: 'done', option_b: 'join' } },
-    },
-    join: approvalWorkflow.steps.join,
-    done: approvalWorkflow.steps.done,
+  approvalWorkflow.steps.prepare.next = 'choose_path';
+  approvalWorkflow.steps.choose_path = {
+    name: 'Choose path',
+    kind: 'approval',
+    input: { summary: '${{ input.prepare.outcome }}' },
+    next: { match: '${{ output.approval }}', cases: { approved: 'done', rejected: 'join' } },
   };
   approvalWorkflow.steps.join.input.prompt = 'Join without branch prompt input.';
   approvalWorkflow.steps.join.next = 'done';
-  writeJson(workflowPath, approvalWorkflow);
+  return approvalWorkflow;
+}
 
-  const next = await expectRunner(['next', '--run-id', runId, '--workflow', workflowPath], 'next approval generic');
+async function reachTypedApproval({ runId, runDir, workflowPath }) {
+  await expectRunner(['next', '--run-id', runId, '--workflow', workflowPath], 'next typed approval producer');
+  const prepareOutput = path.join(runDir, 'prepare-output.json');
+  writeJson(prepareOutput, workerOutput('approval summary'));
+  return continueWithOutputs({ runId, runDir, workflowPath, refs: prepareOutput, label: 'continue to typed approval' });
+}
+
+test('runner: wait_for_approval accepts the closed runner-owned decision JSON', async () => {
+  const { runId, runDir } = await runCase('approval-closed-output');
+  const workflowPath = path.join(tempDir, 'approval-closed-output-workflow.json');
+  writeJson(workflowPath, typedApprovalWorkflow());
+
+  const next = await reachTypedApproval({ runId, runDir, workflowPath });
   assert.equal(next.status, 'needs_host_actions');
   assert.equal(next.requests[0].action, 'wait_for_approval');
 
   const outputPath = path.join(runDir, 'choose-path-answer.json');
-  writeJson(outputPath, { choice: 'option_a', answer: 'Ship the smaller fix first.' });
-  const response = await continueWithOutputs({ runId, runDir, workflowPath, refs: `choose_path=${outputPath}`, label: 'continue approval generic' });
+  writeJson(outputPath, { approval: 'approved' });
+  const response = await continueWithOutputs({ runId, runDir, workflowPath, refs: `choose_path=${outputPath}`, label: 'continue closed approval' });
 
   assert.equal(response.status, 'done');
   assert.equal(response.baton.cursor, 'done');
-  assert.deepEqual(response.baton.state.choose_path, { choice: 'option_a', answer: 'Ship the smaller fix first.' });
+  assert.deepEqual(response.baton.state.choose_path, { approval: 'approved' });
 });
 
-test('runner: single approval request applies output by current stepId', async () => {
+test('runner: rejected approval stores bounded feedback and applies output by current stepId', async () => {
   const { runId, runDir } = await runCase('approval-step-id-output');
   const workflowPath = path.join(tempDir, 'approval-step-id-output-workflow.json');
-  const approvalWorkflow = structuredClone(workflowDoc);
-  approvalWorkflow.start = 'choose_path';
-  approvalWorkflow.steps = {
-    choose_path: {
-      name: 'Choose path',
-      kind: 'approval',
-      input: { prompt: 'Ask the user to choose option_a or option_b.' },
-      next: { match: '${{ output.choice }}', cases: { option_a: 'done', option_b: 'join' } },
-    },
-    join: approvalWorkflow.steps.join,
-    done: approvalWorkflow.steps.done,
-  };
-  approvalWorkflow.steps.join.input.prompt = 'Join without branch prompt input.';
-  approvalWorkflow.steps.join.next = 'done';
-  writeJson(workflowPath, approvalWorkflow);
+  writeJson(workflowPath, typedApprovalWorkflow());
 
-  const next = await expectRunner(['next', '--run-id', runId, '--workflow', workflowPath], 'next opaque approval');
+  const next = await reachTypedApproval({ runId, runDir, workflowPath });
   assert.equal(next.status, 'needs_host_actions');
   assert.equal(next.requests[0].stepId, 'choose_path');
 
   const outputPath = path.join(runDir, 'choose-path-answer.json');
-  writeJson(outputPath, { choice: 'option_a', answer: 'Step id should not imply parallel.' });
+  writeJson(outputPath, { approval: 'rejected', feedback: 'Revise the proposal.' });
   const response = await continueWithOutputs({ runId, runDir, workflowPath, refs: `choose_path=${outputPath}`, label: 'continue approval step id' });
 
-  assert.equal(response.status, 'done');
-  assert.equal(response.baton.cursor, 'done');
-  assert.deepEqual(response.baton.state.choose_path, { choice: 'option_a', answer: 'Step id should not imply parallel.' });
+  assert.equal(response.baton.cursor, 'join');
+  assert.deepEqual(response.baton.state.choose_path, { approval: 'rejected', feedback: 'Revise the proposal.' });
 });
 
-test('runner: approval request exposes optional output schema reference', async () => {
+test('runner: approval workflow output schema is rejected as a removed authoring surface', async () => {
   const { runId, runDir } = await runCase('approval-output-schema-request');
   const workflowPath = path.join(tempDir, 'approval-output-schema-request-workflow.json');
-  const schemaPath = path.join(tempDir, 'approval-output-schema-request.schema.json');
-  writeJson(schemaPath, {
-    $schema: 'https://json-schema.org/draft/2020-12/schema',
-    type: 'object',
-    required: ['choice'],
-    properties: { choice: { enum: ['approved'] } },
-    additionalProperties: false,
-  });
-  const approvalWorkflow = structuredClone(workflowDoc);
-  approvalWorkflow.start = 'choose_path';
-  approvalWorkflow.steps = {
-    choose_path: {
-      name: 'Choose path',
-      kind: 'approval',
-      input: { prompt: 'Ask the user whether to approve or block.' },
-      output: { schema: path.basename(schemaPath) },
-      next: { match: '${{ output.choice }}', cases: { approved: 'done' } },
-    },
-    done: approvalWorkflow.steps.done,
-  };
+  const approvalWorkflow = typedApprovalWorkflow();
+  approvalWorkflow.steps.choose_path.output = { schema: 'removed-approval-output.json' };
   writeJson(workflowPath, approvalWorkflow);
 
-  const response = await expectRunner(['next', '--run-id', runId, '--workflow', workflowPath], 'next approval output schema request');
-
-  assert.equal(response.status, 'needs_host_actions');
-  assert.equal(response.requests[0].action, 'wait_for_approval');
-  assert.equal(response.requests[0].outputSchema, path.basename(schemaPath));
-  assert.equal(response.requests[0].resolvedOutputSchema.ref, path.basename(schemaPath));
-  assert.equal(Object.hasOwn(response.requests[0].resolvedOutputSchema, 'path'), false);
-  assert.deepEqual(response.requests[0].resolvedOutputSchema.schema.required, ['choice']);
+  const response = await runRunner(['next', '--run-id', runId, '--workflow', workflowPath]);
+  assert.notEqual(response.status, 0);
+  assert.match(response.stderr, /approval output\/schema authoring was removed; output is runner-owned/);
 });
 
-test('runner: typed approval retry preserves validation feedback in instructions', async () => {
+test('runner: invalid approval output fails directly and leaves the current gate unchanged', async () => {
   const { runId, runDir } = await runCase('approval-output-schema-retry');
   const workflowPath = path.join(tempDir, 'approval-output-schema-retry-workflow.json');
-  const schemaPath = path.join(tempDir, 'approval-output-schema-retry.schema.json');
-  writeJson(schemaPath, {
-    $schema: 'https://json-schema.org/draft/2020-12/schema',
-    type: 'object',
-    required: ['choice'],
-    properties: { choice: { enum: ['approved'] } },
-    additionalProperties: false,
-  });
-  const approvalWorkflow = structuredClone(workflowDoc);
-  approvalWorkflow.start = 'choose_path';
-  approvalWorkflow.steps = {
-    choose_path: {
-      name: 'Choose path',
-      kind: 'approval',
-      input: { prompt: 'Ask the user whether to approve or block.' },
-      output: { schema: path.basename(schemaPath) },
-      next: { match: '${{ output.choice }}', cases: { approved: 'done' } },
-    },
-    done: approvalWorkflow.steps.done,
-  };
-  writeJson(workflowPath, approvalWorkflow);
+  writeJson(workflowPath, typedApprovalWorkflow());
 
-  await expectRunner(['next', '--run-id', runId, '--workflow', workflowPath], 'next approval output schema retry');
+  await reachTypedApproval({ runId, runDir, workflowPath });
   const outputPath = path.join(runDir, 'invalid-approval.json');
   writeJson(outputPath, { choice: 'maybe' });
 
   const rejected = await runRunner(['write-output', '--run-id', runId, '--workflow', workflowPath, '--step-id', 'choose_path'], { input: readFileSync(outputPath, 'utf8') });
 
   assert.notEqual(rejected.status, 0);
-  assert.match(rejected.stderr, /output schema validation failed for step 'choose_path'/);
-  const response = await expectRunner(['next', '--run-id', runId, '--workflow', workflowPath], 'derive approval output schema retry request');
+  assert.match(rejected.stderr, /approval output failed schema validation: \/choice is not allowed/);
+  const response = await expectRunner(['next', '--run-id', runId, '--workflow', workflowPath], 'derive unchanged approval request');
   assert.equal(response.status, 'needs_host_actions');
   assert.equal(response.requests[0].action, 'wait_for_approval');
-  assert.equal(response.requests[0].outputSchema, path.basename(schemaPath));
-  assert.equal(response.requests[0].resolvedOutputSchema.ref, path.basename(schemaPath));
-  assert.equal(Object.hasOwn(response.requests[0].resolvedOutputSchema, 'path'), false);
-  assert.deepEqual(response.requests[0].resolvedOutputSchema.schema.required, ['choice']);
+  assert.equal(Object.hasOwn(response.requests[0], 'outputSchema'), false);
+  assert.equal(Object.hasOwn(response.requests[0], 'resolvedOutputSchema'), false);
 
   const loaded = await runRunner(['instructions', '--run-id', runId, '--step-id', 'choose_path']);
   assert.equal(loaded.status, 0, loaded.stderr);
   assert.doesNotMatch(loaded.stdout, /Previous output failed output\.schema validation/);
-});
-
-test('runner: typed approval static parallel next preserves approval output in state', async () => {
-  const { runId, runDir } = await runCase('approval-output-schema-static-parallel');
-  const workflowPath = path.join(tempDir, 'approval-output-schema-static-parallel-workflow.json');
-  const schemaPath = path.join(tempDir, 'approval-output-schema-static-parallel.schema.json');
-  writeJson(schemaPath, {
-    $schema: 'https://json-schema.org/draft/2020-12/schema',
-    type: 'object',
-    required: ['choice', 'notes'],
-    properties: {
-      choice: { enum: ['approved'] },
-      notes: { type: 'string' },
-    },
-    additionalProperties: false,
-  });
-  const approvalWorkflow = structuredClone(workflowDoc);
-  approvalWorkflow.start = 'choose_path';
-  approvalWorkflow.steps = {
-    choose_path: {
-      name: 'Choose path',
-      kind: 'approval',
-      input: { prompt: 'Ask the user whether to fan out.' },
-      output: { schema: path.basename(schemaPath) },
-      next: ['branch_a', 'branch_b'],
-    },
-    branch_a: approvalWorkflow.steps.branch_a,
-    branch_b: approvalWorkflow.steps.branch_b,
-    join: approvalWorkflow.steps.join,
-    done: approvalWorkflow.steps.done,
-  };
-  approvalWorkflow.steps.branch_a.input.prompt = 'Run branch A from approval output:\n${{ input.choose_path }}';
-  approvalWorkflow.steps.branch_b.input.prompt = 'Run branch B from approval output:\n${{ input.choose_path }}';
-  approvalWorkflow.steps.join.next = 'done';
-  writeJson(workflowPath, approvalWorkflow);
-
-  await expectRunner(['next', '--run-id', runId, '--workflow', workflowPath], 'next approval static parallel');
-  const outputPath = path.join(runDir, 'choose-path-output.json');
-  const approvalOutput = { choice: 'approved', notes: 'Fan out now.' };
-  writeJson(outputPath, approvalOutput);
-  const response = await continueWithOutputs({ runId, runDir, workflowPath, refs: `choose_path=${outputPath}`, label: 'continue approval static parallel' });
-
-  assert.equal(response.status, 'needs_host_actions');
-  assert.deepEqual(response.requests.map((request) => request.id), ['branch_a', 'branch_b']);
-  assert.deepEqual(response.baton.state.choose_path, approvalOutput);
-
-  const branchAInstructions = await runRunner(['instructions', '--run-id', runId, '--step-id', 'branch_a']);
-  assert.equal(branchAInstructions.status, 0, branchAInstructions.stderr);
-  assert.match(branchAInstructions.stdout, /Fan out now\./);
-});
-
-test('runner: generic approval static parallel next preserves approval output in state', async () => {
-  const { runId, runDir } = await runCase('approval-generic-static-parallel');
-  const workflowPath = path.join(tempDir, 'approval-generic-static-parallel-workflow.json');
-  const approvalWorkflow = structuredClone(workflowDoc);
-  approvalWorkflow.start = 'choose_path';
-  approvalWorkflow.steps = {
-    choose_path: {
-      name: 'Choose path',
-      kind: 'approval',
-      input: { prompt: 'Ask the user whether to fan out.' },
-      output: { schema: 'approval-freeform.schema.json' },
-      next: ['branch_a', 'branch_b'],
-    },
-    branch_a: approvalWorkflow.steps.branch_a,
-    branch_b: approvalWorkflow.steps.branch_b,
-    join: approvalWorkflow.steps.join,
-    done: approvalWorkflow.steps.done,
-  };
-  approvalWorkflow.steps.branch_a.input.prompt = 'Run branch A from approval output:\n${{ input.choose_path }}';
-  approvalWorkflow.steps.branch_b.input.prompt = 'Run branch B from approval output:\n${{ input.choose_path }}';
-  approvalWorkflow.steps.join.next = 'done';
-  writeJson(workflowPath, approvalWorkflow);
-
-  await expectRunner(['next', '--run-id', runId, '--workflow', workflowPath], 'next generic approval static parallel');
-  const outputPath = path.join(runDir, 'choose-path-output.json');
-  const approvalOutput = { approval: 'approved', answer: 'Use both branches.' };
-  writeJson(outputPath, approvalOutput);
-  const response = await continueWithOutputs({ runId, runDir, workflowPath, refs: `choose_path=${outputPath}`, label: 'continue generic approval static parallel' });
-
-  assert.equal(response.status, 'needs_host_actions');
-  assert.deepEqual(response.requests.map((request) => request.id), ['branch_a', 'branch_b']);
-  assert.deepEqual(response.baton.state.choose_path, approvalOutput);
-
-  const branchAInstructions = await runRunner(['instructions', '--run-id', runId, '--step-id', 'branch_a']);
-  assert.equal(branchAInstructions.status, 0, branchAInstructions.stderr);
-  assert.match(branchAInstructions.stdout, /Use both branches\./);
-});
-
-test('runner: selected startup prompt target survives static parallel workflow order drift before output', async () => {
-  const { runId, runDir } = await runCase('user-prompt-static-parallel-target-drift');
-  const workflowPath = path.join(tempDir, 'user-prompt-static-parallel-target-drift.json');
-  const approvalWorkflow = structuredClone(workflowDoc);
-  approvalWorkflow.start = 'choose_path';
-  approvalWorkflow.steps = {
-    choose_path: {
-      name: 'Choose path',
-      kind: 'approval',
-      input: { prompt: 'Ask whether to fan out.' },
-      output: { schema: 'approval-freeform.schema.json' },
-      next: ['branch_a', 'branch_b'],
-    },
-    branch_a: approvalWorkflow.steps.branch_a,
-    branch_b: approvalWorkflow.steps.branch_b,
-    join: approvalWorkflow.steps.join,
-    done: approvalWorkflow.steps.done,
-  };
-  approvalWorkflow.steps.branch_a.input.prompt = 'Run branch A.';
-  approvalWorkflow.steps.branch_b.input.prompt = 'Run branch B.';
-  approvalWorkflow.steps.join.next = 'done';
-  writeJson(workflowPath, approvalWorkflow);
-  const rawPrompt = 'Prompt must stay with originally selected branch.';
-
-  const initial = await expectRunner(['next', '--run-id', runId, '--workflow', workflowPath, '--user-prompt', rawPrompt], 'next approval before static fanout');
-  assert.equal(initial.baton.user_prompt_target, 'branch_a');
-
-  approvalWorkflow.steps.choose_path.next = ['branch_b', 'branch_a'];
-  writeJson(workflowPath, approvalWorkflow);
-  const approvalOutput = path.join(runDir, 'choose-path-output.json');
-  writeJson(approvalOutput, { approval: 'approved' });
-  const fanout = await continueWithOutputs({ runId, runDir, workflowPath, refs: `choose_path=${approvalOutput}`, label: 'continue approval static fanout after drift' });
-  assert.equal(fanout.baton.user_prompt_target, 'branch_a');
-
-  const rerendered = await expectRunner(['next', '--run-id', runId, '--workflow', workflowPath], 'next after static fanout drift');
-  assert.deepEqual(rerendered.requests.map((request) => request.id), ['branch_b', 'branch_a']);
-
-  const branchAInstructions = await runRunner(['instructions', '--run-id', runId, '--step-id', 'branch_a']);
-  assert.equal(branchAInstructions.status, 0, branchAInstructions.stderr);
-  assert.match(branchAInstructions.stdout, /## User prompt/);
-  assert.equal(branchAInstructions.stdout.includes(rawPrompt), true);
-
-  const branchBInstructions = await runRunner(['instructions', '--run-id', runId, '--step-id', 'branch_b']);
-  assert.equal(branchBInstructions.status, 0, branchBInstructions.stderr);
-  assert.doesNotMatch(branchBInstructions.stdout, /## User prompt/);
-  assert.equal(branchBInstructions.stdout.includes(rawPrompt), false);
-});
-
-test('runner: startup prompt static fanout selects renderable worker instead of downstream control-branch worker', async () => {
-  const { runId, runDir } = await runCase('user-prompt-static-fanout-control-branch');
-  const workflowPath = path.join(tempDir, 'user-prompt-static-fanout-control-branch.json');
-  const fanoutWorkflow = structuredClone(workflowDoc);
-  fanoutWorkflow.start = 'choose_path';
-  fanoutWorkflow.steps = {
-    choose_path: {
-      name: 'Choose path',
-      kind: 'approval',
-      input: { prompt: 'Choose whether to ask before the join.' },
-      next: ['approval_before_worker', 'work_b'],
-    },
-    approval_before_worker: {
-      name: 'Approval before worker',
-      kind: 'approval',
-      input: { prompt: 'Approve delayed worker.' },
-      next: 'join',
-    },
-    work_b: {
-      ...fanoutWorkflow.steps.branch_b,
-      next: 'join',
-    },
-    join: fanoutWorkflow.steps.join,
-    done: fanoutWorkflow.steps.done,
-  };
-  fanoutWorkflow.steps.work_b.input.prompt = 'Run worker B.';
-  fanoutWorkflow.steps.join.input.prompt = 'Join approval and worker B.';
-  fanoutWorkflow.steps.join.next = 'done';
-  writeJson(workflowPath, fanoutWorkflow);
-  const rawPrompt = 'Prompt belongs to the worker visible in the first fanout response.';
-
-  const initial = await expectRunner(['next', '--run-id', runId, '--workflow', workflowPath, '--user-prompt', rawPrompt], 'next control branch fanout');
-  assert.equal(initial.baton.user_prompt_target, 'work_b');
-
-  const chooseOutput = path.join(runDir, 'choose-path-output.json');
-  writeJson(chooseOutput, { approval: 'approved' });
-  const fanout = await continueWithOutputs({ runId, runDir, workflowPath, refs: `choose_path=${chooseOutput}`, label: 'continue control branch fanout' });
-  assert.deepEqual(fanout.requests.map((request) => [request.id, request.action]), [
-    ['approval_before_worker', 'wait_for_approval'],
-    ['work_b', 'run_worker'],
-  ]);
-  assert.equal(fanout.baton.user_prompt_target, 'work_b');
-
-  const workBInstructions = await runRunner(['instructions', '--run-id', runId, '--step-id', 'work_b']);
-  assert.equal(workBInstructions.status, 0, workBInstructions.stderr);
-  assert.match(workBInstructions.stdout, /## User prompt/);
-  assert.equal(workBInstructions.stdout.includes(rawPrompt), true);
-});
-
-test('runner: startup prompt target removal before first output fails loudly instead of dropping prompt', async () => {
-  const { runId, runDir } = await runCase('user-prompt-static-parallel-target-removed');
-  const workflowPath = path.join(tempDir, 'user-prompt-static-parallel-target-removed.json');
-  const approvalWorkflow = structuredClone(workflowDoc);
-  approvalWorkflow.start = 'choose_path';
-  approvalWorkflow.steps = {
-    choose_path: {
-      name: 'Choose path',
-      kind: 'approval',
-      input: { prompt: 'Ask whether to fan out.' },
-      output: { schema: 'approval-freeform.schema.json' },
-      next: ['branch_a', 'branch_b'],
-    },
-    branch_a: approvalWorkflow.steps.branch_a,
-    branch_b: approvalWorkflow.steps.branch_b,
-    join: approvalWorkflow.steps.join,
-    done: approvalWorkflow.steps.done,
-  };
-  approvalWorkflow.steps.branch_a.input.prompt = 'Run branch A.';
-  approvalWorkflow.steps.branch_b.input.prompt = 'Run branch B.';
-  writeJson(workflowPath, approvalWorkflow);
-
-  const initial = await expectRunner(['next', '--run-id', runId, '--workflow', workflowPath, '--user-prompt', 'Prompt must not disappear.'], 'next approval before target removal');
-  assert.equal(initial.baton.user_prompt_target, 'branch_a');
-
-  delete approvalWorkflow.steps.branch_a;
-  approvalWorkflow.steps.choose_path.next = ['branch_b'];
-  approvalWorkflow.steps.join.input.prompt = 'Join branch B:\n${{ input.branch_b }}';
-  writeJson(workflowPath, approvalWorkflow);
-  const approvalOutput = path.join(runDir, 'choose-path-output-removed.json');
-  writeJson(approvalOutput, { approval: 'approved' });
-  const result = await runRunner(['write-output', '--run-id', runId, '--workflow', workflowPath, '--step-id', 'choose_path'], { input: readFileSync(approvalOutput, 'utf8') });
-
-  assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /startup user prompt target 'branch_a' is no longer defined|startup user prompt target 'branch_a' is not renderable/);
-});
-
-test('runner: untyped approval static parallel applies branch outputs and persists prompt marker once', async () => {
-  const { runId, runDir } = await runCase('approval-untyped-static-parallel-branch-output');
-  const workflowPath = path.join(tempDir, 'approval-untyped-static-parallel-branch-output.json');
-  const approvalWorkflow = structuredClone(workflowDoc);
-  approvalWorkflow.start = 'choose_path';
-  approvalWorkflow.steps = {
-    choose_path: {
-      name: 'Choose path',
-      kind: 'approval',
-      input: { prompt: 'Ask whether to fan out.' },
-      output: { schema: 'approval-freeform.schema.json' },
-      next: ['branch_a', 'branch_b'],
-    },
-    branch_a: approvalWorkflow.steps.branch_a,
-    branch_b: approvalWorkflow.steps.branch_b,
-    join: approvalWorkflow.steps.join,
-    done: approvalWorkflow.steps.done,
-  };
-  approvalWorkflow.steps.branch_a.input.prompt = 'Run branch A from approval output:\n${{ input.choose_path }}';
-  approvalWorkflow.steps.branch_b.input.prompt = 'Run branch B from approval output:\n${{ input.choose_path }}';
-  approvalWorkflow.steps.join.next = 'done';
-  writeJson(workflowPath, approvalWorkflow);
-  const rawPrompt = 'Prompt marker should persist exactly once.';
-
-  await expectRunner(['next', '--run-id', runId, '--workflow', workflowPath, '--user-prompt', rawPrompt], 'next approval untyped static parallel');
-  const approvalOutput = path.join(runDir, 'choose-path-output.json');
-  writeJson(approvalOutput, { approval: 'approved', note: 'Fan out.' });
-  const fanout = await continueWithOutputs({ runId, runDir, workflowPath, refs: `choose_path=${approvalOutput}`, label: 'continue approval untyped static parallel' });
-  assert.deepEqual(fanout.requests.map((request) => request.id), ['branch_a', 'branch_b']);
-  assert.deepEqual(fanout.baton.state.choose_path, { approval: 'approved', note: 'Fan out.' });
-  assert.equal(fanout.baton.user_prompt_injected, undefined);
-
-  const branchAOutput = path.join(runDir, 'branch-a-output.json');
-  const branchBOutput = path.join(runDir, 'branch-b-output.json');
-  writeJson(branchAOutput, workerOutput('branch a complete'));
-  writeJson(branchBOutput, workerOutput('branch b complete'));
-  const joined = await continueWithOutputs({ runId, runDir, workflowPath, refs: [`branch_a=${branchAOutput}`, `branch_b=${branchBOutput}`], label: 'continue untyped approval branch outputs' });
-
-  assert.equal(joined.status, 'needs_host_actions');
-  assert.deepEqual(joined.requests.map((request) => request.id), ['join']);
-  assert.equal(joined.baton.cursor, 'join');
-  assert.equal(joined.baton.user_prompt_injected, true);
-  assert.equal(JSON.parse(readFileSync(path.join(runDir, 'baton.json'), 'utf8')).user_prompt_injected, true);
-  assert.equal(JSON.stringify(joined.baton).match(/user_prompt_injected/g).length, 1);
-});
-
-test('runner: continue fans out parallel branch requests with separate step ids and load commands', async () => {
-  const { runId, runDir } = await runCase('parallel');
-  const workflowPath = path.join(tempDir, 'parallel-workflow.json');
-  writeJson(workflowPath, workflowDoc);
-
-  await expectRunner(['next', '--run-id', runId, '--workflow', workflowPath], 'next prepare');
-  const prepareOutput = path.join(runDir, 'prepare-output.json');
-  writeJson(prepareOutput, workerOutput('prepared'));
-  const response = await continueWithOutputs({ runId, runDir, workflowPath, refs: prepareOutput, label: 'continue prepare' });
-
-  assert.equal(response.status, 'needs_host_actions');
-  assert.deepEqual(response.requests.map((request) => request.id), ['branch_a', 'branch_b']);
-  assert.deepEqual(response.requests.map((request) => request.stepId), ['branch_a', 'branch_b']);
-  assert.equal(Object.hasOwn(response.requests[0], 'compiledPrompt'), false);
-  assert.equal(Object.hasOwn(response.requests[0], 'outputPath'), false);
-  assert.equal(Object.hasOwn(response.requests[0], 'instructionRef'), false);
-  assert.notEqual(response.requests[0].loadInstructionsCommand, response.requests[1].loadInstructionsCommand);
-  const loaded = await runRunner(['instructions', '--run-id', runId, '--step-id', 'branch_a']);
-  assert.equal(loaded.status, 0, loaded.stderr);
-  assert.match(loaded.stdout, /prepared/);
-});
-
-test('runner: continue accepts mixed run_worker and user-input outputs in one batch', async () => {
-  const { runId, runDir } = await runCase('parallel-mixed-host-actions');
-  const workflowPath = path.join(tempDir, 'parallel-mixed-host-actions.json');
-  const mixedWorkflow = structuredClone(workflowDoc);
-  mixedWorkflow.steps.prepare.next = ['branch_a', 'choose_path'];
-  mixedWorkflow.steps.branch_a.next = 'join';
-  mixedWorkflow.steps.choose_path = {
-    name: 'Choose path',
-    kind: 'approval',
-    input: { prompt: 'Ask for the user choice before joining.' },
-    output: { schema: 'approval-freeform.schema.json' },
-    next: 'join',
-  };
-  mixedWorkflow.steps.join.input.prompt = 'Join branch A and approval:\n${{ input.branch_a }}\n${{ input.choose_path }}';
-  mixedWorkflow.steps.join.next = 'done';
-  writeJson(workflowPath, mixedWorkflow);
-
-  await expectRunner(['next', '--run-id', runId, '--workflow', workflowPath], 'next mixed prepare');
-  const prepareOutput = path.join(runDir, 'prepare-output.json');
-  writeJson(prepareOutput, workerOutput('prepared'));
-  const requests = await continueWithOutputs({ runId, runDir, workflowPath, refs: prepareOutput, label: 'continue mixed prepare' });
-
-  assert.deepEqual(requests.requests.map((request) => [request.id, request.action]), [
-    ['branch_a', 'run_worker'],
-    ['choose_path', 'wait_for_approval'],
-  ]);
-
-  const branchOutput = path.join(runDir, 'branch-a-output.json');
-  const userInputOutput = path.join(runDir, 'choose-path-output.json');
-  writeJson(branchOutput, workerOutput('branch complete'));
-  writeJson(userInputOutput, { choice: 'continue', answer: 'Looks good.' });
-
-  const response = await continueWithOutputs({ runId, runDir, workflowPath, refs: [`branch_a=${branchOutput}`, `choose_path=${userInputOutput}`], label: 'continue mixed batch' });
-
-  assert.equal(response.status, 'needs_host_actions');
-  assert.deepEqual(response.requests.map((request) => request.id), ['join']);
-  assert.equal(response.baton.state.branch_a.results[0].summary, 'branch complete');
-  assert.deepEqual(response.baton.state.choose_path, { choice: 'continue', answer: 'Looks good.' });
-});
-
-test('runner: continue collects parallel outputs and advances to join request', async () => {
-  const { runId, runDir } = await runCase('parallel-join');
-  const workflowPath = path.join(tempDir, 'parallel-join-workflow.json');
-  writeJson(workflowPath, workflowDoc);
-
-  await expectRunner(['next', '--run-id', runId, '--workflow', workflowPath], 'next prepare join');
-  const prepareOutput = path.join(runDir, 'prepare-output.json');
-  writeJson(prepareOutput, workerOutput('prepared'));
-  const branches = await continueWithOutputs({ runId, runDir, workflowPath, refs: prepareOutput, label: 'continue prepare join' });
-  const branchOutputs = branches.requests.map((request) => {
-    const outputPath = path.join(runDir, `${request.id}-artifact.json`);
-    writeJson(outputPath, workerOutput(`${request.id} complete`));
-    return `${request.id}=${outputPath}`;
-  });
-  const response = await continueWithOutputs({ runId, runDir, workflowPath, refs: branchOutputs, label: 'continue branches' });
-
-  assert.equal(response.status, 'needs_host_actions');
-  assert.deepEqual(response.requests.map((request) => request.id), ['join']);
-  assert.equal(Object.hasOwn(response.requests[0], 'compiledPrompt'), false);
-  const loaded = await runRunner(['instructions', '--run-id', runId, '--step-id', 'join']);
-  assert.equal(loaded.status, 0, loaded.stderr);
-  assert.match(loaded.stdout, /branch_a complete/);
-  assert.match(loaded.stdout, /branch_b complete/);
-  const baton = JSON.parse(readFileSync(path.join(runDir, 'baton.json'), 'utf8'));
-  assert.equal(baton.cursor, 'join');
+  assert.match(loaded.stdout, /# Approval — Choose path/);
 });

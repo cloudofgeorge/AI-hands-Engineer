@@ -3,23 +3,27 @@
   "version": 1,
   "start": "plan",
   "done": "done",
-  "blocked": "blocked",
+  "limit_reached": "limit_reached",
   "loopPolicies": {
     "approval_revision": {
       "steps": [
         "plan",
         "approval_gate"
       ],
+      "entry": "plan",
+      "boundary": "approval_gate",
       "maxIterations": 2,
-      "onLimit": "blocked"
+      "onLimit": "limit_reached"
     },
     "implementation_revision": {
       "steps": [
         "implement",
         "review"
       ],
+      "entry": "implement",
+      "boundary": "review",
       "maxIterations": 2,
-      "onLimit": "blocked"
+      "onLimit": "limit_reached"
     }
   },
   "steps": {
@@ -39,12 +43,7 @@
       "name": "Approval Gate",
       "kind": "approval",
       "input": {
-        "prompt": [
-          "Approve the plan.",
-          "",
-          "Plan result:",
-          "${{ input.plan.results }}"
-        ]
+        "summary": "${{ input.plan.outcome }}"
       },
       "next": {
         "match": "${{ output.approval }}",
@@ -52,9 +51,6 @@
           "approved": "implement",
           "rejected": "plan"
         }
-      },
-      "output": {
-        "schema": "schemas/approval.schema.json"
       }
     },
     "implement": {
@@ -87,13 +83,14 @@
       },
       "output": {
         "template": "output.md",
-        "schema": "schemas/routing-review.schema.json"
+        "schema": "schemas/loop-review.schema.json"
       },
       "next": {
         "match": "${{ output.outcome }}",
         "cases": {
           "ready": "done",
-          "retry": "implement"
+          "retry": "implement",
+          "limit_reached": "limit_reached"
         }
       }
     },
@@ -104,8 +101,8 @@
         "prompt": "Finished."
       }
     },
-    "blocked": {
-      "name": "Blocked",
+    "limit_reached": {
+      "name": "Limit reached",
       "kind": "done",
       "input": {
         "prompt": "Loop limit reached."

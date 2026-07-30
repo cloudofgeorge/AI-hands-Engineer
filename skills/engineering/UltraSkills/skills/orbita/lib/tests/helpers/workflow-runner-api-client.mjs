@@ -4,6 +4,8 @@ import {
   loadInstructions,
   movePointer,
   next,
+  reportStop,
+  resolveStop,
   writeOutput,
 } from './orbita-production-api.mjs';
 import { claimWorkflowRunAtRoot, registerWorkflowRunAtRoot } from '../../persistence/run-state/workflow-runs.mjs';
@@ -91,6 +93,15 @@ export async function runWorkflowRunnerApi(args, options = {}) {
       });
       return { status: 0, stdout: jsonStdout(response), stderr: '' };
     }
+    if (mode === 'report-stop' || mode === 'resolve-stop') {
+      const command = mode === 'report-stop' ? reportStop : resolveStop;
+      const response = await command({
+        ...common,
+        stepId: valueAfter(args, '--step-id'),
+        json: valueAfter(args, '--json') ?? options.input ?? '',
+      });
+      return { status: 0, stdout: jsonStdout(response), stderr: '' };
+    }
     if (mode === 'list-pointer-transitions') {
       const response = await listPointerTransitions(common);
       return { status: 0, stdout: jsonStdout(response), stderr: '' };
@@ -99,7 +110,6 @@ export async function runWorkflowRunnerApi(args, options = {}) {
       const response = await movePointer({
         ...common,
         transitionId: valueAfter(args, '--transition-id'),
-        acknowledgeRetainedState: hasFlag(args, '--acknowledge-retained-state'),
       });
       return { status: 0, stdout: jsonStdout(response), stderr: '' };
     }

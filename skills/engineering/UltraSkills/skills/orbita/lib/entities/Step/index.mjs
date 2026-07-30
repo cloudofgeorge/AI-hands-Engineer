@@ -8,12 +8,10 @@ import { applyLoopPolicyTransition } from '../../runtime/loop-policies.mjs';
 import { applyOutputToBatonState } from '../../runtime/baton-state.mjs';
 import { selectState } from '../../runtime/state-selection.mjs';
 import { statusForStep } from '../../runtime/step-status.mjs';
-import { assertParallelTargets, assertTransitionTarget } from '../../runtime/transition-targets.mjs';
+import { assertTransitionTarget } from '../../runtime/transition-targets.mjs';
 import {
   assertNoNestedMatchCasesTarget,
   assertTransitionDescriptorTargets,
-  isDynamicTransitionNext,
-  isStaticParallelNext,
   NEXT_KIND,
   normalizeTransitionNext,
 } from '../../runtime/transition-next.mjs';
@@ -45,11 +43,12 @@ function staleCurrentRequestMessage(stepId, requests = []) {
 function validateOutputKind(step, output, stepId) {
   if (step.kind === 'approval') {
     invariant(!('outcome' in output), `approval cursor '${stepId}' must use host/user output fields, not outcome`);
-    if ('approval' in output) invariant(typeof output.approval === 'string', `approval cursor '${stepId}' field approval must be a string`);
+    invariant(['approved', 'rejected'].includes(output.approval), `approval cursor '${stepId}' field approval must be approved or rejected`);
+    if ('feedback' in output) invariant(typeof output.feedback === 'string' && output.feedback.trim().length > 0, `approval cursor '${stepId}' field feedback must be a non-blank string`);
     return;
   }
 
-  if (step.kind === 'worker') {
+  if (step.kind === 'worker' || step.kind === 'fanout' || step.kind === 'shard') {
     invariant(!('approval' in output), `worker cursor '${stepId}' must use outcome, not approval`);
     invariant(typeof output.outcome === 'string', `worker cursor '${stepId}' must include string outcome`);
   }
@@ -67,11 +66,6 @@ function transitionInputSelectors(descriptor) {
     addExpressionInputSelector(selectors, descriptor.expression);
     return selectors;
   }
-  if (descriptor.kind === NEXT_KIND.PARALLEL_ITEMS) {
-    for (const item of descriptor.items) {
-      if (item.kind === NEXT_KIND.DYNAMIC_TARGET || item.kind === NEXT_KIND.MATCH_CASES) addExpressionInputSelector(selectors, item.expression);
-    }
-  }
   return selectors;
 }
 
@@ -86,12 +80,7 @@ function assertResolvedTransitionTargets(workflow, stepId, resolved, fieldPath =
     return { targetStepId: resolved };
   }
 
-  if (Array.isArray(resolved)) {
-    assertParallelTargets(workflow, stepId, resolved, fieldPath);
-    return { targetStepIds: structuredClone(resolved) };
-  }
-
-  invariant(false, `workflow step '${stepId}' dynamic next must resolve to a string step id or array of step ids`);
+  invariant(false, `workflow step '${stepId}' dynamic next must resolve to a string step id`);
 }
 
 function resolveDynamicValue({ baton, stepId, step, output, descriptor }) {
@@ -116,48 +105,20 @@ function resolveMatchCasesDescriptor({ workflow, baton, stepId, step, output, de
   return assertResolvedTransitionTargets(workflow, stepId, resolveMatchCasesValue({ baton, stepId, step, output, descriptor }));
 }
 
-function pushResolvedParallelValue(targets, value, stepId) {
-  if (typeof value === 'string') {
-    targets.push(value);
-    return;
-  }
-
-  invariant(Array.isArray(value), `workflow step '${stepId}' top-level next array items must resolve to string step ids or flat string arrays`);
-  targets.push(...value);
-}
-
-function resolveParallelItemsDescriptor({ workflow, baton, stepId, step, output, descriptor }) {
-  const targets = [];
-  for (const item of descriptor.items) {
-    if (item.kind === NEXT_KIND.STATIC_TARGET) {
-      targets.push(item.target);
-      continue;
-    }
-
-    if (item.kind === NEXT_KIND.DYNAMIC_TARGET) {
-      pushResolvedParallelValue(targets, resolveDynamicValue({ baton, stepId, step, output, descriptor: item }), stepId);
-      continue;
-    }
-
-    pushResolvedParallelValue(targets, resolveMatchCasesValue({ baton, stepId, step, output, descriptor: item }), stepId);
-  }
-
-  assertParallelTargets(workflow, stepId, targets, 'next');
-  return { targetStepIds: structuredClone(targets) };
-}
-
 export function resolveTransition({ workflow, baton, stepId, step, output }) {
   const wf = workflowData(workflow);
   requireObject(output, 'worker output');
   invariant(step.kind !== 'done', `cursor '${stepId}' is terminal and cannot be applied`);
   validateOutputKind(step, output, stepId);
 
-  const descriptor = normalizeTransitionNext(step.next);
+  const next = step.kind === 'approval' && output.approval === 'rejected' && step.onReject
+    ? step.onReject
+    : step.next;
+  const descriptor = normalizeTransitionNext(next);
   if (descriptor.kind === NEXT_KIND.STATIC_TARGET) return { targetStepId: descriptor.target };
-  if (descriptor.kind === NEXT_KIND.STATIC_PARALLEL) return { targetStepIds: structuredClone(descriptor.targets) };
   if (descriptor.kind === NEXT_KIND.DYNAMIC_TARGET) return resolveDynamicDescriptor({ workflow: wf, baton, stepId, step, output, descriptor });
   if (descriptor.kind === NEXT_KIND.MATCH_CASES) return resolveMatchCasesDescriptor({ workflow: wf, baton, stepId, step, output, descriptor });
-  return resolveParallelItemsDescriptor({ workflow: wf, baton, stepId, step, output, descriptor });
+  invariant(false, `workflow step '${stepId}' has unsupported transition kind '${descriptor.kind}'`);
 }
 
 export class Step {
@@ -183,11 +144,16 @@ export class Step {
   }
 
   resolveConcreteTargets(baton, workflow, output = baton?.state?.[this.id]) {
-    return resolveTransition({ workflow, baton, stepId: this.id, step: this.data, output });
+    return this.resolveConcreteNext(this.data.next, baton, workflow, output);
+  }
+
+  resolveConcreteNext(next, baton, workflow, output = baton?.state?.[this.id]) {
+    return resolveTransition({ workflow, baton, stepId: this.id, step: { ...this.data, next }, output });
   }
 
   validateForRun({ workflow } = {}) {
     if (workflow && Object.hasOwn(this.data, 'next')) assertTransitionDescriptorTargets(workflow, this.id, normalizeTransitionNext(this.data.next));
+    if (workflow && Object.hasOwn(this.data, 'onReject')) assertTransitionDescriptorTargets(workflow, this.id, normalizeTransitionNext(this.data.onReject), 'onReject');
     return { ok: true };
   }
 
@@ -200,13 +166,13 @@ export class Step {
 
     const requestStepId = request.stepId ?? request.id;
     invariant(typeof requestStepId === 'string' && requestStepId.length > 0, staleCurrentRequestMessage(stepId, requests));
-    const workflowStepId = request.ownerStepId ?? requestStepId;
+    const workflowStepId = request.parentStepId ?? request.ownerStepId ?? requestStepId;
     invariant(workflowDoc.steps?.[workflowStepId], staleCurrentRequestMessage(stepId, requests));
 
     if (workflowStepId === this.id) return { ok: true, stepId: requestStepId };
     if (batonData?.state && Object.hasOwn(batonData.state, this.id) && Object.hasOwn(this.data, 'next')) {
       const resolved = this.resolveConcreteTargets(batonData, workflowDoc, batonData.state[this.id]);
-      if (resolved.targetStepIds?.includes(workflowStepId)) return { ok: true, stepId: requestStepId };
+      if (resolved.targetStepId === workflowStepId) return { ok: true, stepId: requestStepId };
     }
 
     throw new Error(staleCurrentRequestMessage(stepId, requests));
@@ -216,7 +182,7 @@ export class Step {
     return { workflow: workflowData(workflow), baton, stepId: this.id, step: this.toJSON(), input: this.resolveInputs(baton), userPrompt };
   }
 
-  applyOutput({ baton, output, workflow, attempts, storeStepOutput = ['worker', 'approval'].includes(this.data.kind) } = {}) {
+  applyOutput({ baton, output, workflow, attempts, storeStepOutput = ['worker', 'fanout', 'shard', 'approval'].includes(this.data.kind) } = {}) {
     const wf = workflowData(workflow);
     const resolvedTransition = this.resolveConcreteTargets(baton, wf, output);
     const { transition, loopProgress } = applyLoopPolicyTransition({
@@ -224,6 +190,7 @@ export class Step {
       baton,
       stepId: this.id,
       transition: resolvedTransition,
+      resolveOnLimitTransition: (next) => this.resolveConcreteNext(next, baton, wf, output),
     });
     const batonData = cloneBoundaryData(baton);
     const outputStepId = storeStepOutput ? this.id : undefined;
@@ -232,10 +199,6 @@ export class Step {
       state: applyOutputToBatonState(batonData, output, attempts ?? transition.attempts, outputStepId, { loopProgress }),
     };
 
-    if (transition.targetStepIds) {
-      return { ...transition, baton: { ...withOutput, status: 'running' } };
-    }
-
     const targetStep = wf.steps?.[transition.targetStepId];
     invariant(targetStep, `transition target not found in workflow: ${transition.targetStepId}`);
     const updatedBaton = {
@@ -243,7 +206,6 @@ export class Step {
       cursor: transition.targetStepId,
       status: statusForStep(wf, transition.targetStepId, targetStep),
     };
-    delete updatedBaton.blocker;
     return { ...transition, targetStep, baton: updatedBaton };
   }
 }

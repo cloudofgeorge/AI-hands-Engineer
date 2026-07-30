@@ -8,14 +8,33 @@
     "outcome": {
       "enum": [
         "ready_for_attack",
-        "blocked"
+        "ready_for_approval"
       ]
     },
     "workflow_contract": {
       "type": "object"
     },
-    "blocker": {
-      "type": "object"
+    "summary": {
+      "type": "string",
+      "minLength": 1
+    },
+    "artifacts": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "https://github.com/MrFlashAccount/Skills/schemas/workflow/baton#/$defs/artifact"
+      },
+      "contains": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "const": "workflow-contract"
+          }
+        }
+      }
     }
   },
   "additionalProperties": true,
@@ -24,7 +43,10 @@
       "if": {
         "properties": {
           "outcome": {
-            "const": "ready_for_attack"
+            "enum": [
+              "ready_for_attack",
+              "ready_for_approval"
+            ]
           }
         },
         "required": [
@@ -33,24 +55,9 @@
       },
       "then": {
         "required": [
-          "workflow_contract"
-        ]
-      }
-    },
-    {
-      "if": {
-        "properties": {
-          "outcome": {
-            "const": "blocked"
-          }
-        },
-        "required": [
-          "outcome"
-        ]
-      },
-      "then": {
-        "required": [
-          "blocker"
+          "workflow_contract",
+          "summary",
+          "artifacts"
         ]
       }
     }

@@ -3,11 +3,12 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterAll, test } from 'bun:test';
-import { continueRun, loadInstructions, next, writeOutput } from './helpers/orbita-production-api.mjs';
+import { continueRun, loadInstructions, next, reportStop, resolveStop, writeOutput } from './helpers/orbita-production-api.mjs';
 import { WORKFLOW_RUNNER_COMMAND as workflowRunnerCommand } from '../runner/runner-command-builder.mjs';
 import { resolveRunPaths } from '../persistence/run-state/paths.mjs';
-import { readRunsIndex } from '../persistence/run-state/run-index.mjs';
+import { readRunAuthority } from '../persistence/run-state/run-authority.mjs';
 import { registerWorkflowRunAtRoot } from '../persistence/run-state/workflow-runs.mjs';
+import { publicNonBlockingStopDetails, publicStopResolutionDetails } from '../runtime/non-blocking-stop.mjs';
 
 const tempDir = mkdtempSync(path.join(tmpdir(), 'workflow-runner-reuse-hints-'));
 const testNow = new Date('2026-06-01T10:00:01.000Z');
@@ -24,14 +25,14 @@ const workflowDoc = {
       kind: 'worker',
       input: { prompt: 'Prepare branch.' },
       output: { template: 'output.md' },
-      next: ['branch_a', 'branch_b'],
+      next: 'branch_a',
     },
     branch_a: {
       name: 'Branch A',
       kind: 'worker',
       input: { prompt: 'Run branch A.' },
       output: { template: 'output.md' },
-      next: 'join',
+      next: 'branch_b',
     },
     branch_b: {
       name: 'Branch B',
@@ -103,11 +104,10 @@ function devHarnessImplementationSchema() {
     type: 'object',
     required: ['outcome'],
     properties: {
-      outcome: { enum: ['implemented', 'blocked'] },
+      outcome: { enum: ['implemented'] },
       summary: { type: 'string' },
       changed_files: { type: 'array' },
       verification: { type: 'array' },
-      blocker: { type: 'object', additionalProperties: true },
       artifacts: { type: 'array' },
     },
     additionalProperties: false,
@@ -115,7 +115,7 @@ function devHarnessImplementationSchema() {
   return path.basename(schemaPath);
 }
 
-function devHarnessImplementationWorkflow({ parallel = false } = {}) {
+function devHarnessImplementationWorkflow() {
   devHarnessImplementationSchema();
   const implementationOutput = { template: 'output.md', schema: 'schemas/implementation-output.json' };
   const steps = {
@@ -124,37 +124,21 @@ function devHarnessImplementationWorkflow({ parallel = false } = {}) {
       kind: 'worker',
       input: { prompt: 'Implement backend.' },
       output: implementationOutput,
-      next: 'implementation_join',
+      next: 'implementation_finalize',
     },
-    frontend_implementation: {
-      name: 'Frontend implementation',
+    implementation_finalize: {
+      name: 'Implementation finalization',
       kind: 'worker',
-      input: { prompt: 'Implement frontend.' },
-      output: implementationOutput,
-      next: 'implementation_join',
-    },
-    implementation_join: {
-      name: 'Implementation join',
-      kind: 'worker',
-      input: { prompt: 'Join implementation outputs.' },
+      input: { prompt: 'Finalize implementation output.' },
       output: { template: 'output.md' },
       next: 'done',
     },
     done: { name: 'Done', kind: 'done', input: { prompt: 'Finished.' } },
   };
-  if (parallel) {
-    steps.implementation_dispatch = {
-      name: 'Implementation dispatch',
-      kind: 'worker',
-      input: { prompt: 'Dispatch implementation.' },
-      output: { template: 'output.md' },
-      next: ['backend_implementation', 'frontend_implementation'],
-    };
-  }
   return {
     name: 'dev-harness',
     version: 1,
-    start: parallel ? 'implementation_dispatch' : 'backend_implementation',
+    start: 'backend_implementation',
     done: 'done',
     steps,
   };
@@ -184,10 +168,10 @@ function implementedOutput(summary, { artifactPath, ...extra } = {}) {
   };
 }
 
-function blockedOutput(overrides = {}) {
+function stopOutput(overrides = {}) {
   return {
-    outcome: 'blocked',
-    blocker: {
+    non_blocking_stop: {
+      stop_id: '00000000-0000-4000-8000-000000000001',
       summary: 'Need approval before continuing.',
       source_step_id: 'backend_implementation',
       needed: 'Approve the smallest recovery question.',
@@ -199,33 +183,68 @@ function blockedOutput(overrides = {}) {
 }
 
 function resolutionOutput(overrides = {}) {
+  const { stop_id = '00000000-0000-4000-8000-000000000001', ...resolutionOverrides } = overrides;
   return {
+    stop_id,
     resolution: {
       summary: 'Approval was granted.',
       decision: 'Proceed with the smallest recovery question approved.',
       evidence: ['orchestrator resolution evidence'],
-      ...overrides,
+      ...resolutionOverrides,
     },
   };
 }
 
-function recoverableApprovalWorkflow() {
-  return {
-    name: 'recoverable-approval',
-    version: 1,
-    start: 'approval_gate',
-    done: 'done',
-    steps: {
-      approval_gate: {
-        name: 'Approval gate',
-        kind: 'approval',
-        input: { prompt: 'Approve the release.' },
-        next: { match: '${{ output.approval }}', cases: { approved: 'done' } },
-      },
-      done: { name: 'Done', kind: 'done', input: { prompt: 'Finished.' } },
-    },
-  };
-}
+test('non-blocking stop sanitizer preserves public URLs and redacts delimiter-independent private values', () => {
+  const publicUrls = [
+    'https://github.com/MrFlashAccount/UltraSkills/issues/252',
+    'http://localhost:3000/help?step=worker',
+  ];
+  for (const value of publicUrls) {
+    const stop = publicNonBlockingStopDetails({
+      stop_id: '00000000-0000-4000-8000-000000000010',
+      summary: value,
+      needed: value,
+    });
+    assert.equal(stop.summary, value);
+    assert.equal(stop.needed, value);
+  }
+
+  const privateValues = [
+    { input: '[/home/alice/private.txt]', secret: '/home/alice/private.txt' },
+    { input: 'path=[/home/alice/private.txt]', secret: '/home/alice/private.txt' },
+    { input: 'source:/home/alice/private.txt', secret: '/home/alice/private.txt' },
+    { input: '<~alice/.ssh/id_ed25519>', secret: '~alice/.ssh/id_ed25519' },
+    { input: '[../../customer/private.csv]', secret: '../../customer/private.csv' },
+    { input: 'dir/../../customer/private.csv', secret: '../../customer/private.csv' },
+    { input: 'prefix/../private.txt', secret: '../private.txt' },
+    { input: '[C:\\Users\\alice\\secret.txt]', secret: 'C:\\Users\\alice\\secret.txt' },
+    { input: '[private file](/home/alice/private.txt)', secret: '/home/alice/private.txt' },
+    { input: '"AWS_SECRET_ACCESS_KEY": "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"', secret: 'wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY' },
+    { input: "'AWS_SESSION_TOKEN': 'IQoJb3JpZ2luX2VjEJr//////////wEaCXVzLWVhc3QtMSJGMEQCID+a/b=='", secret: 'IQoJb3JpZ2luX2VjEJr//////////wEaCXVzLWVhc3QtMSJGMEQCID+a/b==' },
+    { input: '{"service.auth.token":"abc/DEF+ghi=="}', secret: 'abc/DEF+ghi==' },
+    { input: 'config["token"]="abc/DEF+ghi=="', secret: 'abc/DEF+ghi==' },
+    { input: '`namespace_password` = `hunter2`', secret: 'hunter2' },
+    { input: 'https://alice:hunter2@example.com/private', secret: 'hunter2' },
+    { input: 'https://example.com/help?access_token=abc%2FDEF%2Bghi', secret: 'abc%2FDEF%2Bghi' },
+    { input: 'https://example.com/help?sig=shortsecret', secret: 'shortsecret' },
+    { input: 'https://example.com/help?signature=anothersecret', secret: 'anothersecret' },
+    { input: 'https://example.com/help?x-amz-signature=awssecret', secret: 'awssecret' },
+    { input: 'https://example.com/help?x-goog-signature=googsecret', secret: 'googsecret' },
+  ];
+  for (const { input, secret } of privateValues) {
+    const stop = publicNonBlockingStopDetails({
+      stop_id: '00000000-0000-4000-8000-000000000011',
+      summary: input,
+      needed: input,
+    });
+    const resolution = publicStopResolutionDetails({ summary: input, decision: input });
+    assert.doesNotMatch(stop.summary, new RegExp(secret.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')), `stop summary leaked: ${input}`);
+    assert.doesNotMatch(stop.needed, new RegExp(secret.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')), `stop needed leaked: ${input}`);
+    assert.doesNotMatch(resolution.summary, new RegExp(secret.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')), `resolution summary leaked: ${input}`);
+    assert.doesNotMatch(resolution.decision, new RegExp(secret.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')), `resolution decision leaked: ${input}`);
+  }
+});
 
 async function runCase(label, workflow = workflowDoc, options = {}) {
   const workflowPath = path.join(tempDir, `${label}-workflow.json`);
@@ -286,6 +305,8 @@ test('runner reuse hints: follow-up instructions preserve validating output cont
   assert.doesNotMatch(followUp, /"required": \[/);
   assert.doesNotMatch(followUp, /Return markdown\./);
   assert.match(followUp, /workflow-runner\.mjs' write-output --run-id/);
+  assert.match(fresh, /workflow-runner\.mjs' report-stop --run-id/);
+  assert.match(followUp, /workflow-runner\.mjs' report-stop --run-id/);
   assert.match(followUp, /--step-id 'prepare'/);
   assert.match(followUp, /--lease-token '[^']+'/);
   assert.doesNotMatch(followUp, /write-output[^\n]*--only-instructions/);
@@ -358,7 +379,7 @@ test('runner reuse hints: continue bind-agent renews stale matching worker lease
     leaseToken,
     now,
   });
-  const before = (await readRunsIndex(paths)).runs[runId].workerLease;
+  const before = (await readRunAuthority(paths)).workerLease;
   assert.equal(before.leaseExpiresAt, '2026-06-01T11:00:01.000Z');
 
   await continueRun({
@@ -369,85 +390,64 @@ test('runner reuse hints: continue bind-agent renews stale matching worker lease
     now: new Date('2026-06-01T11:05:00.000Z'),
   });
 
-  const after = (await readRunsIndex(paths)).runs[runId].workerLease;
+  const after = (await readRunAuthority(paths)).workerLease;
   assert.equal(after.tokenHash, before.tokenHash);
   assert.equal(after.tokenEpoch, before.tokenEpoch);
   assert.equal(after.leaseExpiresAt, '2026-06-01T12:05:00.000Z');
 });
 
-test('runner reuse hints: continue bind-agent keeps parallel step bindings separated', async () => {
-  const { runId, runDir, workflowPath, leaseToken, now } = await runCase('parallel-bindings');
-  await next({ runId, workflowPath, leaseToken, now });
-  await writeOutput({
-    runId,
-    workflowPath,
-    stepId: 'prepare',
-    json: JSON.stringify(workerOutput('prepared')),
-    debugSummaryFile: debugSummaryFileFor(runDir, 'prepare'),
-    leaseToken,
-    now,
-  });
-  const parallel = await continueRun({ runId, workflowPath, leaseToken, now });
-  assert.deepEqual(parallel.requests.map((request) => [request.stepId, request.preferredAgentId]), [
-    ['branch_a', null],
-    ['branch_b', null],
-  ]);
 
-  await writeOutput({
-    runId,
-    workflowPath,
-    stepId: 'branch_a',
-    json: JSON.stringify(workerOutput('branch a')),
-    debugSummaryFile: debugSummaryFileFor(runDir, 'branch_a'),
-    leaseToken,
-    now,
-  });
-  await writeOutput({
-    runId,
-    workflowPath,
-    stepId: 'branch_b',
-    json: JSON.stringify(workerOutput('branch b')),
-    debugSummaryFile: debugSummaryFileFor(runDir, 'branch_b'),
-    leaseToken,
-    now,
-  });
-  await continueRun({ runId, workflowPath, bindAgents: ['branch_a=worker-a', 'branch_b=worker-b'], leaseToken, now });
-  assert.deepEqual(readBaton(runDir).workerBindings, {
-    branch_a: 'worker-a',
-    branch_b: 'worker-b',
-  });
-});
-
-test('runner reuse hints: recoverable implementation blocker keeps host work active with same-worker follow-up', async () => {
+test('runner reuse hints: non-blocking stop keeps host work active with same-worker follow-up', async () => {
   const workflow = devHarnessImplementationWorkflow();
-  const { runId, runDir, workflowPath, leaseToken, now } = await runCase('recoverable-blocker-same-worker', workflow);
+  const { runId, runDir, workflowPath, leaseToken, now } = await runCase('non-blocking-stop-same-worker', workflow);
 
   const first = await next({ runId, workflowPath, leaseToken, now });
   assert.equal(first.requests[0].stepId, 'backend_implementation');
-  await writeOutput({
+  const reportedStopJson = JSON.stringify(stopOutput());
+  await reportStop({
     runId,
     workflowPath,
     stepId: 'backend_implementation',
-    json: JSON.stringify(blockedOutput()),
-    debugSummaryFile: debugSummaryFileFor(runDir, 'backend_implementation'),
+    json: reportedStopJson,
     leaseToken,
     now,
   });
+  const historyAfterFirstReport = readFileSync(path.join(runDir, 'history.md'), 'utf8');
+  const duplicateBeforeResolution = await reportStop({
+    runId,
+    workflowPath,
+    stepId: 'backend_implementation',
+    json: reportedStopJson,
+    leaseToken,
+    now,
+  });
+  assert.equal(duplicateBeforeResolution.duplicate, true);
+  assert.equal(readFileSync(path.join(runDir, 'history.md'), 'utf8'), historyAfterFirstReport);
+  await assert.rejects(
+    () => reportStop({
+      runId,
+      workflowPath,
+      stepId: 'backend_implementation',
+      json: JSON.stringify(stopOutput({ summary: 'Conflicting retry under the same stop id.' })),
+      leaseToken,
+      now,
+    }),
+    /conflicts with its previously accepted report/,
+  );
 
   const recovery = await continueRun({ runId, workflowPath, bindAgents: ['backend_implementation=backend-worker-1'], leaseToken, now });
 
   assert.equal(recovery.status, 'needs_host_actions');
   assert.equal(recovery.baton.status, 'running');
   assert.equal(recovery.baton.cursor, 'backend_implementation');
-  assert.equal(recovery.baton.blocker, undefined);
   assert.equal(recovery.baton.state.backend_implementation, undefined);
   assert.equal(recovery.requests[0].stepId, 'backend_implementation');
-  assert.equal(recovery.requests[0].action, 'resolve_worker_blocker');
-  assert.match(recovery.requests[0].writeResolutionCommand, /workflow-runner\.mjs' write-output --run-id/);
-  assert.equal(recovery.requests[0].recoverableBlocker.source_step_id, 'backend_implementation');
-  assert.equal(recovery.requests[0].recoverableBlocker.needed, 'Approve the smallest recovery question.');
+  assert.equal(recovery.requests[0].action, 'resolve_non_blocking_stop');
+  assert.match(recovery.requests[0].resolveStopCommand, /workflow-runner\.mjs' resolve-stop --run-id/);
+  assert.equal(recovery.requests[0].nonBlockingStop.source_step_id, 'backend_implementation');
+  assert.equal(recovery.requests[0].nonBlockingStop.needed, 'Approve the smallest recovery question.');
 
-  await writeOutput({
+  await resolveStop({
     runId,
     workflowPath,
     stepId: 'backend_implementation',
@@ -457,11 +457,11 @@ test('runner reuse hints: recoverable implementation blocker keeps host work act
   });
   const batonAfterResolutionWrite = readBaton(runDir);
   assert.equal(
-    batonAfterResolutionWrite.state.backend_implementation.resolution.decision,
+    batonAfterResolutionWrite.nonBlockingStops.backend_implementation.resolution.decision,
     'Proceed with the smallest recovery question approved.',
   );
   assert.equal(
-    batonAfterResolutionWrite.recoverableWorkerBlockers.backend_implementation.resolution,
+    batonAfterResolutionWrite.state.backend_implementation,
     undefined,
   );
   const resolved = await continueRun({ runId, workflowPath, leaseToken, now });
@@ -469,12 +469,93 @@ test('runner reuse hints: recoverable implementation blocker keeps host work act
   assert.equal(resolved.requests[0].preferredAgentId, 'backend-worker-1');
   assert.match(resolved.requests[0].loadInstructionsCommand, /workflow-runner\.mjs' instructions --run-id/);
   assert.match(resolved.requests[0].loadFollowupInstructionsCommand, /instructions --follow-up --run-id/);
-  assert.equal(resolved.requests[0].recoverableBlocker.resolution.decision, 'Proceed with the smallest recovery question approved.');
+  assert.equal(resolved.requests[0].nonBlockingStop.resolution.decision, 'Proceed with the smallest recovery question approved.');
+
+  const historyAfterResolution = readFileSync(path.join(runDir, 'history.md'), 'utf8');
+  const delayedReplay = await reportStop({
+    runId,
+    workflowPath,
+    stepId: 'backend_implementation',
+    json: reportedStopJson,
+    leaseToken,
+    now,
+  });
+  assert.equal(delayedReplay.duplicate, true);
+  assert.equal(readFileSync(path.join(runDir, 'history.md'), 'utf8'), historyAfterResolution);
+  assert.equal(
+    readBaton(runDir).nonBlockingStops.backend_implementation.resolution.decision,
+    'Proceed with the smallest recovery question approved.',
+  );
+  const duplicateResolution = await resolveStop({
+    runId,
+    workflowPath,
+    stepId: 'backend_implementation',
+    json: JSON.stringify(resolutionOutput()),
+    leaseToken,
+    now,
+  });
+  assert.equal(duplicateResolution.duplicate, true);
+  assert.equal(readFileSync(path.join(runDir, 'history.md'), 'utf8'), historyAfterResolution);
+  await assert.rejects(
+    () => resolveStop({
+      runId,
+      workflowPath,
+      stepId: 'backend_implementation',
+      json: JSON.stringify(resolutionOutput({ decision: 'Conflicting retry decision.' })),
+      leaseToken,
+      now,
+    }),
+    /conflicts with its previously accepted resolution/,
+  );
 
   const followUpInstructions = await loadInstructions({ runId, workflowPath, stepId: 'backend_implementation', followUp: true, leaseToken, now });
   assert.match(followUpInstructions, /Implement backend\./);
-  assert.match(followUpInstructions, /orchestrator has resolved that blocker/i);
+  assert.match(followUpInstructions, /orchestrator has resolved it/i);
   assert.match(followUpInstructions, /Proceed with the smallest recovery question approved\./);
+
+  const secondStopId = '00000000-0000-4000-8000-000000000009';
+  await reportStop({
+    runId,
+    workflowPath,
+    stepId: 'backend_implementation',
+    json: JSON.stringify(stopOutput({
+      stop_id: secondStopId,
+      summary: 'A new problem needs a new resolution.',
+      needed: 'Resolve the second problem.',
+    })),
+    leaseToken,
+    now,
+  });
+  const secondRecovery = await continueRun({ runId, workflowPath, leaseToken, now });
+  assert.equal(secondRecovery.requests[0].action, 'resolve_non_blocking_stop');
+  assert.equal(secondRecovery.requests[0].nonBlockingStop.stop_id, secondStopId);
+  await assert.rejects(
+    () => resolveStop({
+      runId,
+      workflowPath,
+      stepId: 'backend_implementation',
+      json: JSON.stringify(resolutionOutput()),
+      leaseToken,
+      now,
+    }),
+    /does not match current stop/,
+  );
+  assert.equal(readBaton(runDir).nonBlockingStops.backend_implementation.resolution, undefined);
+  await resolveStop({
+    runId,
+    workflowPath,
+    stepId: 'backend_implementation',
+    json: JSON.stringify(resolutionOutput({
+      stop_id: secondStopId,
+      summary: 'Second problem resolved.',
+      decision: 'Continue after the second resolution.',
+    })),
+    leaseToken,
+    now,
+  });
+  const secondResolved = await continueRun({ runId, workflowPath, leaseToken, now });
+  assert.equal(secondResolved.requests[0].action, 'run_worker');
+  assert.equal(secondResolved.requests[0].nonBlockingStop.resolution.decision, 'Continue after the second resolution.');
 
   await writeOutput({
     runId,
@@ -489,14 +570,14 @@ test('runner reuse hints: recoverable implementation blocker keeps host work act
   });
   const joined = await continueRun({ runId, workflowPath, leaseToken, now });
   assert.equal(joined.status, 'needs_host_actions');
-  assert.equal(joined.requests[0].stepId, 'implementation_join');
+  assert.equal(joined.requests[0].stepId, 'implementation_finalize');
 
   await writeOutput({
     runId,
     workflowPath,
-    stepId: 'implementation_join',
+    stepId: 'implementation_finalize',
     json: JSON.stringify(workerOutput('joined')),
-    debugSummaryFile: debugSummaryFileFor(runDir, 'implementation_join'),
+    debugSummaryFile: debugSummaryFileFor(runDir, 'implementation_finalize'),
     leaseToken,
     now,
   });
@@ -504,25 +585,56 @@ test('runner reuse hints: recoverable implementation blocker keeps host work act
   assert.equal(done.status, 'done');
 });
 
-test('runner reuse hints: any worker blocked output is recoverable at the same step', async () => {
+test('runner reuse hints: any worker can report a non-blocking stop at the same request', async () => {
   const workflow = schemaCoveredWorkflow({ prepare: { next: 'done' } });
-  const { runId, runDir, workflowPath, leaseToken, now } = await runCase('recoverable-blocker-generic-worker', workflow);
+  const { runId, runDir, workflowPath, leaseToken, now } = await runCase('non-blocking-stop-generic-worker', workflow);
 
   const first = await next({ runId, workflowPath, leaseToken, now });
   assert.equal(first.requests[0].stepId, 'prepare');
-  await writeOutput({
+  await assert.rejects(
+    () => writeOutput({
+      runId,
+      workflowPath,
+      stepId: 'prepare',
+      json: JSON.stringify({ outcome: 'blocked' }),
+      debugSummaryFile: debugSummaryFileFor(runDir, 'prepare'),
+      leaseToken,
+      now,
+    }),
+    /removed stop-as-output contract/,
+  );
+  assert.equal(readBaton(runDir).state.prepare, undefined);
+  await assert.rejects(
+    () => reportStop({
+      runId,
+      workflowPath,
+      stepId: 'prepare',
+      json: JSON.stringify({
+        non_blocking_stop: {
+          stop_id: '00000000-0000-4000-8000-000000000002',
+          summary: 'Need a decision before continuing.',
+          needed: 'Provide the missing decision.',
+          resolution: { summary: 'Self-resolved.', decision: 'Continue.' },
+        },
+      }),
+      leaseToken,
+      now,
+    }),
+    /must not include resolution/,
+  );
+  assert.equal(readBaton(runDir).nonBlockingStops, undefined);
+  await reportStop({
     runId,
     workflowPath,
     stepId: 'prepare',
     json: JSON.stringify({
-      outcome: 'blocked',
-      blocker: {
+      non_blocking_stop: {
+        stop_id: '00000000-0000-4000-8000-000000000003',
         summary: 'Need a decision before continuing.',
         source_step_id: 'prepare',
         needed: 'Provide the missing decision.',
       },
     }),
-    debugSummaryFile: debugSummaryFileFor(runDir, 'prepare'),
     leaseToken,
     now,
   });
@@ -534,32 +646,31 @@ test('runner reuse hints: any worker blocked output is recoverable at the same s
   assert.equal(recovery.baton.cursor, 'prepare');
   assert.equal(recovery.baton.state.prepare, undefined);
   assert.equal(recovery.requests[0].stepId, 'prepare');
-  assert.equal(recovery.requests[0].action, 'resolve_worker_blocker');
-  assert.equal(recovery.requests[0].recoverableBlocker.source_step_id, 'prepare');
-  assert.equal(recovery.requests[0].recoverableBlocker.needed, 'Provide the missing decision.');
+  assert.equal(recovery.requests[0].action, 'resolve_non_blocking_stop');
+  assert.equal(recovery.requests[0].nonBlockingStop.source_step_id, 'prepare');
+  assert.equal(recovery.requests[0].nonBlockingStop.needed, 'Provide the missing decision.');
 });
 
-test('runner reuse hints: recoverable implementation blocker has fresh-worker fallback without preferred worker', async () => {
+test('runner reuse hints: non-blocking stop has fresh-worker fallback without preferred worker', async () => {
   const workflow = devHarnessImplementationWorkflow();
-  const { runId, runDir, workflowPath, leaseToken, now } = await runCase('recoverable-blocker-fresh-worker', workflow);
+  const { runId, runDir, workflowPath, leaseToken, now } = await runCase('non-blocking-stop-fresh-worker', workflow);
 
   await next({ runId, workflowPath, leaseToken, now });
-  await writeOutput({
+  await reportStop({
     runId,
     workflowPath,
     stepId: 'backend_implementation',
-    json: JSON.stringify(blockedOutput()),
-    debugSummaryFile: debugSummaryFileFor(runDir, 'backend_implementation'),
+    json: JSON.stringify(stopOutput()),
     leaseToken,
     now,
   });
 
   const recovery = await continueRun({ runId, workflowPath, leaseToken, now });
 
-  assert.equal(recovery.requests[0].action, 'resolve_worker_blocker');
-  assert.equal(recovery.requests[0].recoverableBlocker.summary, 'Need approval before continuing.');
+  assert.equal(recovery.requests[0].action, 'resolve_non_blocking_stop');
+  assert.equal(recovery.requests[0].nonBlockingStop.summary, 'Need approval before continuing.');
 
-  await writeOutput({
+  await resolveStop({
     runId,
     workflowPath,
     stepId: 'backend_implementation',
@@ -574,248 +685,13 @@ test('runner reuse hints: recoverable implementation blocker has fresh-worker fa
   assert.match(resolved.requests[0].loadFollowupInstructionsCommand, /instructions --follow-up --run-id/);
 
   const freshInstructions = await loadInstructions({ runId, workflowPath, stepId: 'backend_implementation', leaseToken, now });
-  assert.match(freshInstructions, /## Recoverable blocker/);
+  assert.match(freshInstructions, /## Non-blocking stop/);
   assert.match(freshInstructions, /Approve the smallest recovery question\./);
   assert.match(freshInstructions, /bounded public evidence/);
-  assert.match(freshInstructions, /The orchestrator has resolved that blocker/);
+  assert.match(freshInstructions, /The orchestrator has resolved it/);
   assert.match(freshInstructions, /Proceed with the smallest recovery question approved\./);
 });
 
-test('runner reuse hints: recoverable implementation blocker preserves accepted sibling outputs before join', async () => {
-  const workflow = devHarnessImplementationWorkflow({ parallel: true });
-  const { runId, runDir, workflowPath, leaseToken, now } = await runCase('recoverable-blocker-parallel-preserves-sibling', workflow);
-
-  await next({ runId, workflowPath, leaseToken, now });
-  await writeOutput({
-    runId,
-    workflowPath,
-    stepId: 'implementation_dispatch',
-    json: JSON.stringify(workerOutput('dispatched')),
-    debugSummaryFile: debugSummaryFileFor(runDir, 'implementation_dispatch'),
-    leaseToken,
-    now,
-  });
-  const branches = await continueRun({ runId, workflowPath, leaseToken, now });
-  assert.deepEqual(branches.requests.map((request) => request.stepId), ['backend_implementation', 'frontend_implementation']);
-
-  const frontendArtifactDir = path.join(runDir, 'frontend_implementation', 'artifacts');
-  mkdirSync(frontendArtifactDir, { recursive: true });
-  const frontendArtifactPath = path.join(frontendArtifactDir, 'handoff.md');
-  writeFileSync(frontendArtifactPath, 'frontend handoff\n');
-  await writeOutput({
-    runId,
-    workflowPath,
-    stepId: 'frontend_implementation',
-    json: JSON.stringify(implementedOutput('frontend complete', {
-      artifactPath: frontendArtifactPath,
-    })),
-    debugSummaryFile: debugSummaryFileFor(runDir, 'frontend_implementation'),
-    leaseToken,
-    now,
-  });
-  await writeOutput({
-    runId,
-    workflowPath,
-    stepId: 'backend_implementation',
-    json: JSON.stringify(blockedOutput()),
-    debugSummaryFile: debugSummaryFileFor(runDir, 'backend_implementation'),
-    leaseToken,
-    now,
-  });
-
-  const recovery = await continueRun({ runId, workflowPath, leaseToken, now });
-
-  assert.equal(recovery.status, 'needs_host_actions');
-  assert.equal(recovery.baton.cursor, 'backend_implementation');
-  assert.equal(recovery.requests.length, 1);
-  assert.equal(recovery.requests[0].stepId, 'backend_implementation');
-  assert.equal(recovery.requests[0].action, 'resolve_worker_blocker');
-  assert.equal(recovery.baton.state.backend_implementation, undefined);
-  assert.equal(recovery.baton.state.frontend_implementation.summary, 'frontend complete');
-  assert.equal(recovery.baton.state.artifacts.at(-1).producerStepId, 'frontend_implementation');
-  assert.equal(recovery.baton.state.artifacts.at(-1).artifact.id, 'implementation-handoff');
-
-  await writeOutput({
-    runId,
-    workflowPath,
-    stepId: 'backend_implementation',
-    json: JSON.stringify(resolutionOutput()),
-    leaseToken,
-    now,
-  });
-  const resolved = await continueRun({ runId, workflowPath, leaseToken, now });
-  assert.equal(resolved.requests[0].action, 'run_worker');
-  assert.equal(resolved.requests[0].stepId, 'backend_implementation');
-  assert.equal(resolved.baton.state.frontend_implementation.summary, 'frontend complete');
-  assert.equal(resolved.baton.state.artifacts.at(-1).producerStepId, 'frontend_implementation');
-
-  await writeOutput({
-    runId,
-    workflowPath,
-    stepId: 'backend_implementation',
-    json: JSON.stringify(implementedOutput('backend recovered after sibling', {
-      artifactPath: implementationArtifactPathFor(runDir, 'backend_implementation', 'backend recovered after sibling'),
-    })),
-    debugSummaryFile: debugSummaryFileFor(runDir, 'backend_implementation', 'backend recovered after sibling\n'),
-    leaseToken,
-    now,
-  });
-  const joined = await continueRun({ runId, workflowPath, leaseToken, now });
-  assert.equal(joined.requests[0].stepId, 'implementation_join');
-  assert.equal(joined.baton.state.frontend_implementation.summary, 'frontend complete');
-  assert.ok(joined.baton.state.artifacts.some((entry) => entry.producerStepId === 'frontend_implementation'));
-});
-
-test('runner reuse hints: recoverable approval blocker waits for orchestrator resolution before approval resumes', async () => {
-  const workflow = recoverableApprovalWorkflow();
-  const { runId, runDir, workflowPath, leaseToken, now } = await runCase('recoverable-blocker-approval', workflow);
-
-  const first = await next({ runId, workflowPath, leaseToken, now });
-  assert.equal(first.requests[0].stepId, 'approval_gate');
-  assert.equal(first.requests[0].action, 'wait_for_approval');
-
-  await writeOutput({
-    runId,
-    workflowPath,
-    stepId: 'approval_gate',
-    json: JSON.stringify({
-      approval: 'blocked',
-      blocker: {
-        summary: 'Need orchestrator decision before approval can continue.',
-        source_step_id: 'approval_gate',
-        needed: 'Resolve approval concern.',
-      },
-    }),
-    leaseToken,
-    now,
-  });
-
-  const persistedAfterWrite = readBaton(runDir).state.approval_gate;
-  assert.deepEqual(Object.keys(persistedAfterWrite).sort(), ['approval', 'blocker'].sort());
-  assert.equal(persistedAfterWrite.approval, 'blocked');
-
-  const recovery = await continueRun({ runId, workflowPath, leaseToken, now });
-  assert.equal(recovery.status, 'needs_host_actions');
-  assert.equal(recovery.requests[0].stepId, 'approval_gate');
-  assert.equal(recovery.requests[0].action, 'resolve_worker_blocker');
-  assert.equal(recovery.requests[0].recoverableBlocker.needed, 'Resolve approval concern.');
-
-  await writeOutput({
-    runId,
-    workflowPath,
-    stepId: 'approval_gate',
-    json: JSON.stringify(resolutionOutput({
-      summary: 'Approval concern is resolved.',
-      decision: 'Ask for approval again with the resolved concern.',
-    })),
-    leaseToken,
-    now,
-  });
-
-  const resolved = await continueRun({ runId, workflowPath, leaseToken, now });
-  assert.equal(resolved.status, 'needs_host_actions');
-  assert.equal(resolved.requests[0].stepId, 'approval_gate');
-  assert.equal(resolved.requests[0].action, 'wait_for_approval');
-  assert.match(resolved.orchestratorInstruction, /Ask for approval again with the resolved concern\./);
-});
-
-test('runner reuse hints: recoverable blocker request redacts private fields and sensitive text', async () => {
-  const workflow = devHarnessImplementationWorkflow();
-  const customRunsRoot = path.join(tempDir, 'recoverable-blocker-custom-runs-root');
-  const { runId, runDir, workflowPath, runsRoot, leaseToken, now } = await runCase('recoverable-blocker-redaction', workflow, { runsRoot: customRunsRoot });
-  const customIndexPath = path.join(customRunsRoot, 'runs.json');
-  const customBatonPath = path.join(runDir, 'baton.json');
-  const customHistoryPath = path.join(runDir, 'history.md');
-  const desktopSecretPath = '/Users/sergeigarin/Desktop/secret.txt';
-  const homeSecretPath = '/home/sergey/private.md';
-  const tmpSecretPath = '/tmp/not-public/evidence.txt';
-
-  await next({ runId, workflowPath, runsRoot, leaseToken, now });
-  await writeOutput({
-    runId,
-    workflowPath,
-    runsRoot,
-    stepId: 'backend_implementation',
-    json: JSON.stringify(blockedOutput({
-      summary: `Need token --lease-token ${leaseToken} before continuing from ${customIndexPath} and ${desktopSecretPath}.`,
-      needed: `Inspect ${customBatonPath} and ${homeSecretPath} before proceeding.`,
-      evidence: [
-        `${runDir}/.workflow-runner/durable-commit.json`,
-        customHistoryPath,
-        tmpSecretPath,
-        'safe public evidence',
-      ],
-      risk: `Leaking ${customRunsRoot} or /private/var/folders/secret would expose private run state.`,
-      transcript: 'private transcript must not be projected',
-      hidden_prompt: 'private prompt must not be projected',
-      token: leaseToken,
-    })),
-    debugSummaryFile: debugSummaryFileFor(runDir, 'backend_implementation'),
-    leaseToken,
-    now,
-  });
-
-  const persistedAfterWrite = readBaton(runDir).state.backend_implementation;
-  const persistedText = JSON.stringify(persistedAfterWrite);
-  assert.deepEqual(Object.keys(persistedAfterWrite).sort(), ['blocker', 'outcome'].sort());
-  assert.doesNotMatch(persistedText, new RegExp(leaseToken.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
-  assert.doesNotMatch(persistedText, /private transcript/);
-  assert.doesNotMatch(persistedText, /private prompt/);
-  assert.doesNotMatch(persistedText, /\.workflow-runner/);
-  assert.doesNotMatch(persistedText, /recoverable-blocker-custom-runs-root/);
-  assert.doesNotMatch(persistedText, /runs\.json/);
-  assert.doesNotMatch(persistedText, /baton\.json/);
-  assert.doesNotMatch(persistedText, /history\.md/);
-  assert.doesNotMatch(persistedText, /Desktop\/secret/);
-  assert.doesNotMatch(persistedText, /\/home\/sergey/);
-  assert.doesNotMatch(persistedText, /\/tmp\/not-public/);
-  assert.doesNotMatch(persistedText, /\/private\/var/);
-  assert.match(persistedText, /local filesystem path/);
-
-  const recovery = await continueRun({ runId, workflowPath, runsRoot, leaseToken, now });
-  const projected = recovery.requests[0].recoverableBlocker;
-  const projectedText = JSON.stringify(projected);
-
-  assert.doesNotMatch(projectedText, new RegExp(leaseToken.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
-  assert.doesNotMatch(projectedText, /private transcript/);
-  assert.doesNotMatch(projectedText, /private prompt/);
-  assert.doesNotMatch(projectedText, /\.workflow-runner/);
-  assert.doesNotMatch(projectedText, /recoverable-blocker-custom-runs-root/);
-  assert.doesNotMatch(projectedText, /runs\.json/);
-  assert.doesNotMatch(projectedText, /baton\.json/);
-  assert.doesNotMatch(projectedText, /history\.md/);
-  assert.doesNotMatch(projectedText, /Desktop\/secret/);
-  assert.doesNotMatch(projectedText, /\/home\/sergey/);
-  assert.doesNotMatch(projectedText, /\/tmp\/not-public/);
-  assert.doesNotMatch(projectedText, /\/private\/var/);
-  assert.match(projected.summary, /\[redacted-lease-token\]/);
-  assert.match(projected.summary, /workflow runs index/);
-  assert.match(projected.summary, /local filesystem path/);
-  assert.match(projected.needed, /workflow baton private state/);
-  assert.match(projected.evidence.join(' '), /workflow history private state/);
-  assert.deepEqual(Object.keys(projected).sort(), ['evidence', 'needed', 'risk', 'source_step_id', 'summary'].sort());
-
-  await writeOutput({
-    runId,
-    workflowPath,
-    runsRoot,
-    stepId: 'backend_implementation',
-    json: JSON.stringify(resolutionOutput({
-      summary: `Resolved with ${desktopSecretPath}.`,
-      decision: `Continue after reading ${homeSecretPath}.`,
-      evidence: [tmpSecretPath],
-    })),
-    leaseToken,
-    now,
-  });
-
-  const persistedResolutionAfterWrite = readBaton(runDir).state.backend_implementation;
-  const persistedResolutionText = JSON.stringify(persistedResolutionAfterWrite);
-  assert.doesNotMatch(persistedResolutionText, /Desktop\/secret/);
-  assert.doesNotMatch(persistedResolutionText, /\/home\/sergey/);
-  assert.doesNotMatch(persistedResolutionText, /\/tmp\/not-public/);
-  assert.match(persistedResolutionText, /local filesystem path/);
-});
 
 test('runner reuse hints: write-output rejects binding metadata and preserves workerBindings', async () => {
   const workflow = structuredClone(workflowDoc);

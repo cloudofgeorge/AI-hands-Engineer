@@ -13,6 +13,7 @@ This README is a routing index for agents. Keep it short; detailed procedures be
 - Use `to-spec`/`to-prd` → `to-tickets`/`to-issues` → `implement` for explicit planning-to-execution flows.
 - Use `wayfinder` for efforts too large or foggy for one session, then resolve the map one ticket at a time.
 - Use `code-review` for two-axis Standards/Spec review of a branch, PR, WIP diff, or “review since X” request.
+- Use `wizard` only when a human must complete manual dashboard, credential, provisioning, migration, or cutover steps; do not use it for work the agent can perform directly.
 - Use the Superpowers skills when you need strict process-gated workflows for skill selection, TDD, systematic debugging, subagent execution, worktree isolation, review, and verification.
 - Use the [UltraSkills bundle](./UltraSkills/skills/) for staged research → architecture → execution-plan → implementation flows, multi-role code review, workflow-runner orchestration, or repo-role hats.
 - UltraSkills includes imported skills whose `name` overlaps existing skills (`forthright`, `grill-me`, `improve-codebase-architecture`); use the linked path here when you need the UltraSkills version.
@@ -52,6 +53,10 @@ Model- or user-reachable; descriptions are trigger-oriented so an agent can rout
 - [prototype](./prototype/SKILL.md) — Build a throwaway prototype to answer a design question before committing to a product or implementation direction.
 - [code-review](./code-review/SKILL.md) — Review changes since a fixed point in parallel Standards and Spec axes, then report the findings side by side.
 - [resolving-merge-conflicts](./resolving-merge-conflicts/SKILL.md) — Use when you need to resolve an in-progress git merge/rebase conflict.
+
+### Human-in-the-loop operations
+
+- [wizard](./wizard/SKILL.md) — Generate an interactive Bash guide for manual credential, dashboard, provisioning, migration, or cutover steps that only a human can perform.
 
 ### Superpowers workflow skills
 
@@ -136,7 +141,6 @@ Model- or user-reachable; descriptions are trigger-oriented so an agent can rout
 - [create-skill](./UltraSkills/skills/create-skill/SKILL.md) — Create, rewrite, audit, or restructure a Claude/OpenClaw-style skill folder from source material, prompts, SOPs, notes, or an existing skill.
 - [docs-writer](./UltraSkills/skills/docs-writer/SKILL.md) — Write or rewrite usage, setup, onboarding, migration, API, and reference documentation so readers succeed quickly.
 - [devrel-copywriter](./UltraSkills/skills/devrel-copywriter/SKILL.md) — Shape repository README framing and opening structure when the README is a product-facing entrypoint.
-- [obsidian](./UltraSkills/skills/obsidian/SKILL.md) — Work with Obsidian vaults as plain Markdown and automate note search, creation, moves, and deletes through obsidian-cli.
 - [improve-codebase-architecture](./UltraSkills/skills/improve-codebase-architecture/SKILL.md) — Legacy donor/reference skill for module, interface, seam, and depth thinking; prefer UltraSkills `create-architecture` for active architecture work.
 
 ### UltraSkills communication and role lenses

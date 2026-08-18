@@ -35,12 +35,10 @@ root repository.
 
 ## Skills
 
-Most skills live under `skills/<section>/<skill-name>/SKILL.md`. Nested skill
-sets can live deeper; for example, UltraSkills uses
-`skills/engineering/UltraSkills/skills/<skill-name>/SKILL.md`, while Superpowers
-uses `skills/engineering/superpowers/<skill-name>/SKILL.md`. A skill can also
-include nearby reference documents, templates, assets, or scripts when the
-workflow needs more than one file.
+Most skills live under `skills/<section>/<skill-name>/SKILL.md`. Some skill
+groups live deeper within a section. A skill can also include nearby reference
+documents, templates, assets, or scripts when the workflow needs more than one
+file.
 
 Start with [`skills/README.md`](skills/README.md), then open the relevant section
 README:
@@ -48,7 +46,7 @@ README:
 | Section | Use when | Index |
 | --- | --- | --- |
 | Design | Design critique, high-fidelity prototypes, interactive demos, slides, animations, image generation, brand systems, or frontend taste workflows. | [`skills/design/README.md`](skills/design/README.md) |
-| Engineering | Research, code review, wayfinding, code planning, architecture, debugging, implementation, TDD, security, CI, deployment, human-guided manual operations, macOS, web, UltraSkills staged research/review workflows, or Superpowers process workflows. | [`skills/engineering/README.md`](skills/engineering/README.md) |
+| Engineering | Research, code review, wayfinding, code planning, architecture, debugging, implementation, TDD, security, CI, deployment, human-guided manual operations, macOS, and web. | [`skills/engineering/README.md`](skills/engineering/README.md) |
 | Forthright | Agent-to-agent handoffs and compact internal operational writing. | [`skills/forthright/README.md`](skills/forthright/README.md) |
 | Marketing | Growth, positioning, acquisition, conversion, lifecycle, revenue, and launch work. | [`skills/marketing/README.md`](skills/marketing/README.md) |
 | Note-taking | Second Brain retrieval, capture, handoffs, reviews, and Obsidian vault note work. | [`skills/note-taking/README.md`](skills/note-taking/README.md) |
@@ -65,18 +63,14 @@ Each section README separates:
   (`disable-model-invocation: true`).
 - **Model-invoked** skills — model- or user-reachable, with trigger-oriented
   descriptions so agents can select them automatically.
-- **Imported or nested skill sets** — collections such as UltraSkills or
-  Superpowers; use their linked paths plus the section README when a skill name
-  overlaps with another installed skill.
+- **Nested skill groups** — use the section README to find the correct skill
+  when several skills cover adjacent tasks.
 
 ### Hermes installation note
 
 For Hermes Agent, install or point `skills.external_dirs` at this repository's
-`skills/` directory. Hermes users should reload/start a new session after the
-repo update so nested `SKILL.md` files, including UltraSkills and Superpowers,
-are discoverable.
-If a nested skill has the same `name` as another installed skill, use the linked
-README path to choose the intended version.
+`skills/` directory. Hermes users should reload or start a new session after a
+repository update so added, removed, or moved `SKILL.md` files are rediscovered.
 
 ## Rules
 

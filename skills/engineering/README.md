@@ -14,10 +14,7 @@ This README is a routing index for agents. Keep it short; detailed procedures be
 - Use `wayfinder` for efforts too large or foggy for one session, then resolve the map one ticket at a time.
 - Use `code-review` for two-axis Standards/Spec review of a branch, PR, WIP diff, or “review since X” request.
 - Use `wizard` only when a human must complete manual dashboard, credential, provisioning, migration, or cutover steps; do not use it for work the agent can perform directly.
-- Use the Superpowers skills when you need strict process-gated workflows for skill selection, TDD, systematic debugging, subagent execution, worktree isolation, review, and verification.
-- Use the [UltraSkills bundle](./UltraSkills/skills/) for staged research → architecture → execution-plan → implementation flows, multi-role code review, workflow-runner orchestration, or repo-role hats.
-- UltraSkills includes imported skills whose `name` overlaps existing skills (`forthright`, `grill-me`, `improve-codebase-architecture`); use the linked path here when you need the UltraSkills version.
-- Superpowers includes a skill whose `name` overlaps an existing skill (`writing-plans`); use the linked path here when you need the Superpowers version.
+
 
 ## User-invoked
 
@@ -58,22 +55,6 @@ Model- or user-reachable; descriptions are trigger-oriented so an agent can rout
 
 - [wizard](./wizard/SKILL.md) — Generate an interactive Bash guide for manual credential, dashboard, provisioning, migration, or cutover steps that only a human can perform.
 
-### Superpowers workflow skills
-
-- [using-superpowers](./superpowers/using-superpowers/SKILL.md) — Use at conversation start to enforce skill-first routing and load the relevant Superpowers workflow before any response.
-- [brainstorming](./superpowers/brainstorming/SKILL.md) — Use before creative work that creates features, components, functionality, or behavior and needs design approval before implementation.
-- [writing-plans](./superpowers/writing-plans/SKILL.md) — Use when requirements are ready and a multi-step implementation plan must be written before touching code.
-- [test-driven-development](./superpowers/test-driven-development/SKILL.md) — Use before implementing a feature, bug fix, refactor, or behavior change that needs test-first development.
-- [systematic-debugging](./superpowers/systematic-debugging/SKILL.md) — Use for bugs, test failures, build failures, performance problems, or unexpected behavior before proposing fixes.
-- [verification-before-completion](./superpowers/verification-before-completion/SKILL.md) — Use before claiming work is complete, fixed, passing, committed, or PR-ready so verification evidence is fresh.
-- [using-git-worktrees](./superpowers/using-git-worktrees/SKILL.md) — Use when feature work or implementation-plan execution needs an isolated workspace.
-- [dispatching-parallel-agents](./superpowers/dispatching-parallel-agents/SKILL.md) — Use for two or more independent tasks or failures that can be investigated or implemented in parallel.
-- [subagent-driven-development](./superpowers/subagent-driven-development/SKILL.md) — Use when executing an implementation plan with independent tasks in the current session.
-- [executing-plans](./superpowers/executing-plans/SKILL.md) — Use when executing a written implementation plan in a separate session with review checkpoints.
-- [requesting-code-review](./superpowers/requesting-code-review/SKILL.md) — Use after completing tasks, major features, or pre-merge work that needs requirement and quality review.
-- [receiving-code-review](./superpowers/receiving-code-review/SKILL.md) — Use before acting on review feedback so suggestions are understood, verified, and applied one item at a time.
-- [finishing-a-development-branch](./superpowers/finishing-a-development-branch/SKILL.md) — Use after implementation and tests pass to choose merge, PR, cleanup, or branch-completion flow.
-- [writing-skills](./superpowers/writing-skills/SKILL.md) — Use when creating, editing, or verifying skills before deployment.
 
 ### Optimization and simplification
 
@@ -126,35 +107,9 @@ Model- or user-reachable; descriptions are trigger-oriented so an agent can rout
 - [vercel-react-best-practices](./domains/web/vercel-react-best-practices/SKILL.md) — Use when writing, reviewing, refactoring, or optimizing React/Next.js code for Vercel-style performance patterns.
 - [vercel-react-native-skills](./domains/web/vercel-react-native-skills/SKILL.md) — Use when building React Native or Expo apps, optimizing mobile performance, implementing animations, or working with native modules.
 
-### UltraSkills staged delivery and review
-
-- [research-critic](./UltraSkills/skills/research-critic/SKILL.md) — Produce a reusable pre-implementation research artifact by having a researcher create a canvas and a second reviewer attack the assumptions.
-- [create-architecture](./UltraSkills/skills/create-architecture/SKILL.md) — Create, improve, align, or audit an architecture decision package, including `ARCHITECTURE.md`, C4/DDD artifacts, migration slices, and colocated context rules.
-- [implementation-harness](./UltraSkills/skills/implementation-harness/SKILL.md) — Execute the approved development stage against closed research and execution-plan contracts without reopening broad discovery.
-- [code-review-orchestrator](./UltraSkills/skills/code-review-orchestrator/SKILL.md) — Fan out code review across specialist roles and merge must-fix, should-fix, and can-delay findings into a pass/fail verdict.
-- [loop](./UltraSkills/skills/loop/SKILL.md) — Run repeated task cycles with explicit state, worker handoff, progress reporting, and safe stop conditions.
-- [orbita](./UltraSkills/skills/orbita/SKILL.md) — Drive workflow-runner host-adapter jobs, follow runner stdout, handle host actions, and continue/resume workflow runs.
-
-### UltraSkills docs, design, knowledge, and skill authoring
-
-- [create-design](./UltraSkills/skills/create-design/SKILL.md) — Create, rewrite, review, or restructure a project's design-memory system and operational design artifacts.
-- [create-skill](./UltraSkills/skills/create-skill/SKILL.md) — Create, rewrite, audit, or restructure a Claude/OpenClaw-style skill folder from source material, prompts, SOPs, notes, or an existing skill.
-- [docs-writer](./UltraSkills/skills/docs-writer/SKILL.md) — Write or rewrite usage, setup, onboarding, migration, API, and reference documentation so readers succeed quickly.
-- [devrel-copywriter](./UltraSkills/skills/devrel-copywriter/SKILL.md) — Shape repository README framing and opening structure when the README is a product-facing entrypoint.
-- [improve-codebase-architecture](./UltraSkills/skills/improve-codebase-architecture/SKILL.md) — Legacy donor/reference skill for module, interface, seam, and depth thinking; prefer UltraSkills `create-architecture` for active architecture work.
-
-### UltraSkills communication and role lenses
-
-- [caveman](./UltraSkills/skills/caveman/SKILL.md) — Use an ultra-compressed communication mode that cuts filler while keeping technical accuracy.
-- [forthright](./UltraSkills/skills/forthright/SKILL.md) — Apply high-compression internal communication for ACP workers, subagents, agent handoffs, and AI-only operational files.
-- [grill-me](./UltraSkills/skills/grill-me/SKILL.md) — Relentlessly interview the user about a plan or design until assumptions and branches are resolved.
-- [hat](./UltraSkills/skills/hat/SKILL.md) — Activate, switch, list, query, or clear a sticky repo-role lens discovered from `UltraSkills/roles/*`.
-- [humanizer](./UltraSkills/skills/humanizer/SKILL.md) — Polish existing text so it sounds natural, casual, clear, or human without changing the core message.
-- [cover-letter-writer](./UltraSkills/skills/cover-letter-writer/SKILL.md) — Write or rewrite short, high-conviction cover letters, recruiter outreach, warm intros, and hiring-manager messages.
 
 ## Maintenance
 
 - Update this README whenever a skill is added, removed, renamed, or moved in this section.
 - Keep each bullet to one routing sentence: what task should make an agent open that skill.
 - Keep `User-invoked` and `Model-invoked` aligned with the `disable-model-invocation` flag in `SKILL.md` frontmatter.
-- Keep imported bundles such as UltraSkills linked here even when they also have their own bundle README.

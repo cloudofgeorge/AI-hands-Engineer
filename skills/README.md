@@ -22,7 +22,7 @@ Start here when an agent needs to choose which section README to open. Each sect
 | [Marketing](./marketing/README.md) | 45 | Growth, positioning, acquisition, conversion, lifecycle, and revenue workflows. |
 | [Note-taking](./note-taking/README.md) | 2 | Second Brain retrieval, capture, handoffs, reviews, and Obsidian vault note work. |
 | [Personal](./personal/README.md) | 3 | User-specific writing, notes, and cookbook workflows. |
-| [Productivity](./productivity/README.md) | 5 | General workflow, handoff, teaching, grilling, and skill-writing discipline. |
+| [Productivity](./productivity/README.md) | 6 | General workflow, handoff, teaching, grilling, formal logic, and skill-writing discipline. |
 | [SEO](./seo/README.md) | 20 | SEO/GEO research, technical audits, content, authority, monitoring, and reporting. |
 | [Tools](./tools/README.md) | 4 | Concrete tool-operation workflows for documents, PDFs, Obsidian, and browser automation. |
 

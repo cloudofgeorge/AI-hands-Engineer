@@ -1,6 +1,6 @@
 # Productivity
 
-General workflow skills for planning, handoffs, teaching, grilling, and skill-writing discipline.
+General workflow skills for planning, handoffs, teaching, grilling, formal logic, and skill-writing discipline.
 
 This README is a routing index for agents. Keep it short; detailed procedures belong in each linked `SKILL.md`.
 
@@ -27,6 +27,10 @@ Model- or user-reachable; descriptions are trigger-oriented so an agent can rout
 ### Planning and conversation control
 
 - [grilling](./grilling/SKILL.md) — Interview the user relentlessly about a plan or design.
+
+### Reasoning and argumentation
+
+- [to-logic](./to-logic/SKILL.md) — Проверяет и исправляет формальную логику рассуждений, силлогизмов и аргументирующих текстов.
 
 ## Maintenance
 

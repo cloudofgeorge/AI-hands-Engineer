@@ -16,7 +16,7 @@ This README is a routing index for agents. Keep it short; detailed procedures be
 Reachable only when you type them (`disable-model-invocation: true`).
 
 - [grill-me](./grill-me/SKILL.md) — A relentless interview to sharpen a plan or design.
-- [handoff](./handoff/SKILL.md) — Compact the current conversation into a handoff document for another agent to pick up.
+- [continuity](./continuity/SKILL.md) — Create a compact continuity brief so a fresh agent or session can resume the work.
 - [teach](./teach/SKILL.md) — Teach the user a new skill or concept, within this workspace.
 - [writing-great-skills](./writing-great-skills/SKILL.md) — Reference for writing and editing skills well — the vocabulary and principles that make a skill predictable.
 

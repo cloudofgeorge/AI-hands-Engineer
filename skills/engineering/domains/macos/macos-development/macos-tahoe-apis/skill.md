@@ -25,7 +25,7 @@ Guide developers in using macOS 26 (Tahoe) specific features and APIs effectivel
 1. **Tahoe Features**: `skills/macos-tahoe-apis/tahoe-features.md`
 2. **Apple Intelligence**: `skills/macos-tahoe-apis/apple-intelligence.md`
 3. **MLX Framework**: `skills/macos-tahoe-apis/mlx-framework.md`
-4. **Continuity**: `skills/macos-tahoe-apis/continuity.md`
+4. **Continuity**: `skills/macos-tahoe-apis/continuity-features.md`
 5. **Xcode 16**: `skills/macos-tahoe-apis/xcode16.md`
 
 ## Review Approach

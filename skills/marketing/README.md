@@ -46,7 +46,7 @@ Model- or user-reachable; descriptions are trigger-oriented so an agent can rout
 - [public-relations](./skills/public-relations/SKILL.md) — When the user wants help with public relations, earned media, press coverage, journalist outreach, or media strategy (not pull requests).
 - [social](./skills/social/SKILL.md) — When the user wants help creating, scheduling, or optimizing social media content for LinkedIn, Twitter/X, Instagram, TikTok, Facebook, or other platforms.
 - [video](./skills/video/SKILL.md) — When the user wants to create, generate, or produce video content using AI tools or programmatic frameworks.
-- [image](./skills/image/SKILL.md) — When the user wants to create, generate, edit, or optimize images for marketing — blog heroes, social graphics, product mockups, profile banners, listing visuals, or brand assets.
+- [marketing-image-production](./skills/marketing-image-production/SKILL.md) — When the user wants to create, generate, edit, or optimize images for marketing — blog heroes, social graphics, product mockups, profile banners, listing visuals, or brand assets.
 - [aso](./skills/aso/SKILL.md) — When the user wants to audit or optimize an App Store or Google Play listing.
 
 ### SEO, content, and site architecture

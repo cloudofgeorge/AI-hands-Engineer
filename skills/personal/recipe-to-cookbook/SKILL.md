@@ -2,12 +2,6 @@
 name: recipe-to-cookbook
 description: "Turns YouTube cooking videos, Shorts, written recipes, or ingredient lists into a structured cookbook-style recipe in Russian. Use when the user sends a YouTube/video recipe link, asks to extract a recipe, wants a dish plan from ingredients, or needs substitutions, mise en place, cooking steps, and serving guidance."
 version: 1.0.0
-author: Hermes Agent
-license: MIT
-metadata:
-  hermes:
-    tags: [cooking, recipes, youtube, shorts, cookbook, meal-planning]
-    related_skills: [youtube-content]
 ---
 
 # Recipe to Cookbook

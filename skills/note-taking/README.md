@@ -7,7 +7,7 @@ This README is a routing index for agents. Keep it short; detailed procedures be
 ## How to choose
 
 - Prefer the narrowest skill that directly matches the task.
-- Use `using-second-brain` for cross-session retrieval, capture, review, handoff, and workspace setup.
+- Use `using-second-brain` to retrieve durable context, capture and develop notes, reuse knowledge in outputs, review, hand off, or set up a knowledge workspace.
 - Use `obsidian` for direct filesystem work inside the Obsidian vault: reading, searching, creating, editing, and linking notes.
 - When a task needs durable context, start with `using-second-brain` to retrieve and preserve, then use `obsidian` for vault-level edits.
 
@@ -23,7 +23,7 @@ Model- or user-reachable; descriptions are trigger-oriented so an agent can rout
 
 ### Knowledge workspace
 
-- [using-second-brain](./using-second-brain/SKILL.md) — Retrieve prior context, continue projects, capture research or decisions, prepare handoffs, review knowledge, or set up a Second Brain across sessions and collaborators.
+- [using-second-brain](./using-second-brain/SKILL.md) — Retrieve context, capture and connect ideas, turn stored knowledge into outputs, preserve research and decisions, review, hand off, or set up a Second Brain.
 - [obsidian](./obsidian/SKILL.md) — Read, search, create, and edit notes in the Obsidian vault using a filesystem-first workflow.
 
 ## Maintenance

@@ -4,11 +4,14 @@ A Brain Contract is a short, human-readable operating agreement for a knowledge 
 
 Create or update it only when the workspace owner requests setup/maintenance or when an existing contract must be corrected. Do not manufacture a contract for a narrow retrieval request.
 
-## Required fields
+## Discovery fields
+
+Discover only what the operation needs. This is not a mandatory intake form: a quick capture into an established inbox does not require completing every row. Unknown non-blocking details can stay unknown.
 
 | Field | What it answers |
 |---|---|
 | Workspace identity | What this knowledge workspace is called and who owns it. |
+| Purpose and useful outputs | Which outcomes, recurring questions, interests, and audiences the workspace supports. What would count as useful reuse? |
 | Root / entry point | Where to start browsing; may be a folder, collection, database, repository, URL, or named home record. |
 | Access adapter | Capabilities actually available: read, search, create, targeted edit, relations/links, attachments, and verification evidence (readback, receipt, version ID, append log, acknowledgement). Include known missing capabilities and fallback/reporting rules. |
 | Navigation | Canonical indexes/hubs and the preferred route for projects, areas, resources, people, inbox, archive, and reviews. |
@@ -17,6 +20,9 @@ Create or update it only when the workspace owner requests setup/maintenance or 
 | Change permissions | What may be edited directly; what current authorization is required for execution-side effects; and which actions require explicit approval. |
 | Data boundaries | Sensitivity/access classes, rights to copy, approved destinations, redaction rules, and how restricted sources are safely referenced. |
 | Lifecycle | Capture/triage, update, review, archive, retention, stale-content conventions, and recovery/rollback expectations. |
+| Intake and task boundary | Where quick captures go, how they are triaged, and which system owns commitments, next actions, waiting items, and real deadlines. |
+| Organization and effort | Existing project/area/resource/archive equivalents, concept/hub conventions, minimum capture fields, and when enrichment is useful. No mandatory PARA migration. |
+| Review triggers | Existing cadence; changes or failures that require re-checking; distinction between a human review routine and an authorized scheduled automation. |
 | Automation/external systems | Existing jobs/integrations, owners, boundaries, and the requirement for approval before changes. |
 | Migration integrity | Inventory/manifest, ID/link/attachment mapping, pilot/dry-run, reconciliation, recovery/rollback, and residual-risk acceptance requirements. |
 | Verification | Readback, receipt/version evidence, metadata/link validation, search/discoverability, and backup/version checks supported by the storage. |
@@ -25,15 +31,17 @@ Create or update it only when the workspace owner requests setup/maintenance or 
 
 ```text
 Workspace: <human-readable name>
+Purpose: <useful outcomes or recurring questions>
 Owner: <person or team>
 Entry point: <stable root, collection, database, or home record>
 Access adapter: read; search; create; targeted-edit; verify-by-readback | receipt/version-ID; missing capabilities: <...>
 Canonical navigation: <system index>; <project hubs>; <inbox>
 Authority by claim: implemented state → <canonical source + date rule>; approved decisions → <...>; task state → <...>; external facts → <...>
 Schema: inherit existing fields; record type / lifecycle / evidence status / claim kind are <fields or prose convention>
-Permissions: direct content updates in <scope>; current authorization for <execution effects>; confirmation for <structural/destructive/external/automated scope>
+Permissions: direct content updates in <scope>; existing authorization for <execution effects>; confirmation still needed for <scope not already authorized>
 Data boundaries: <access classes>; copy allowed from <source classes> to <destinations>; sanitize <URLs/attachments/metadata>; never store secrets
-Lifecycle: capture → triage → maintain → review → archive by <policy>
+Lifecycle: capture → triage → develop → use → review; archive by <policy>
+Task authority: <canonical task system or an explicit unsynced action draft>
 Migration integrity: <manifest + mapping + pilot + reconciliation + rollback/residual-risk policy>
 Verification: <readback or durable receipt> + <discoverability if available> + relevant link/metadata checks
 ```

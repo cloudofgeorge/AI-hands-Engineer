@@ -2,17 +2,30 @@
 
 Use the workspace’s established templates and metadata first. These are **semantic shapes**, not a mandate for Markdown, YAML, a particular database, or a particular tool. Omit unknown fields rather than inventing them.
 
+Use only fields that help the task. The extended source and research shapes are for evidence-bearing work, not prerequisites for saving a thought. Keep the user’s language; label an agent-generated interpretation rather than attributing it to the user.
+
+## Quick capture
+
+```text
+Title: <recognizable idea or source>
+Content / source pointer: <the thought, supplied text, or safe link>
+Why saved: <when known; optional>
+```
+
+Use the established inbox and automatic capture date/identity when available. A personal idea needs no external source. An unread link remains unread; add richer provenance when actually researching or using it.
+
 ## Field model
 
 Keep these dimensions separate whenever the storage can represent them:
 
 | Field | What it means | Examples |
 |---|---|---|
-| Record type | Functional role of the record | source, research, decision, task, handoff, review |
+| Record type | Functional role of the record | source, concept, research, decision, task, handoff, review, output |
 | Lifecycle state | Workflow position | inbox, draft, active, completed, superseded, archived |
-| Evidence status | Confidence/freshness of material claims | unverified, verified, conflicted, stale, unknown |
+| Evidence status | Workspace evidence label; explain verification scope and freshness separately when needed | unverified, verified, conflicted, stale, unknown |
 | Claim kind | Nature of a particular assertion | source-excerpt, observation, synthesis, recommendation, decision |
 | Representation (optional) | Fidelity to original source | raw, excerpt, derived |
+| Organizational role (optional) | Where information is useful; independent of record type | project, area, resource, archive |
 
 A `research` record is not automatically verified; a recommendation is not a decision; and a raw capture is not a lifecycle state.
 
@@ -35,7 +48,8 @@ Original material: <permitted unaltered excerpt, attachment, or pointer>
 Summary: <optional; explicitly marked as synthesis>
 Re-check method: <how an authorized reader can verify it>
 Relationships: <project/source/decision/task links>
-Questions / next action: <optional>
+Why saved / intended use: <when known>
+Questions / next action: <optional; link to canonical task if it exists>
 ```
 
 **Rules:** Preserve the source pointer or original material before extracting conclusions. Confirm that copying is allowed for the source and destination access classes; otherwise use a sanitized pointer. If revision, anchor, or re-check method is unavailable for mutable material, mark it **not fully reproducible**.
@@ -49,7 +63,7 @@ Lifecycle state: draft | active | completed | superseded | archived
 Evidence status: unverified | verified | conflicted | stale | unknown
 Scope: <project/topic/decision>
 Question and decision use: <what this should answer>
-Method and scope: <where/how evidence was collected; dates/limits>
+Method and scope: <where/how evidence was collected; dates/limits; stopping condition>
 Evidence: <source-linked observations with identity/revision/anchor when available>
 Synthesis: <reasoned interpretation; clearly distinct from evidence>
 Counterevidence / limitations: <what would change the conclusion>
@@ -97,6 +111,8 @@ Acceptance checks: <how completion is verified>
 Dependencies / blockers: <known blockers>
 Next action: <smallest proposed executable step; not authorization by itself>
 Owner: <if known>
+Canonical task link / sync state: <existing task system; mark unsynced drafts>
+Due date / waiting for: <only real dates and known dependencies>
 Related records: <decision/research/handoff/source links>
 ```
 
@@ -133,12 +149,57 @@ Evidence status: <coverage/freshness of findings>
 Scope and method: <areas searched, capabilities available, checks performed, limitations>
 Healthy paths: <working navigation/retrieval patterns>
 Findings: <stale, duplicate, orphaned, conflicting, or inaccessible records>
+Work review: <selected inbox batch; active next actions/blockers; waiting/deferred items>
+Retrieval / reuse sample: <real questions tried; sources found; actual reuse; observed friction>
 Impact and dependencies: <what a proposed change could break>
 Recommendations: keep | update | relink | merge | archive | delete
-Approval required: <each destructive/structural/external/automated action>
+Authorization: <already covered scope; approval still needed for specific additional actions>
 Changes actually applied: <only confirmed, verified work>
 Verification evidence: <readback, receipt/version ID, or stated limitation>
 Follow-up / next review: <optional>
+Deferred scope: <remaining batch or unchecked areas, if any>
 ```
 
 **Rule:** A review may recommend destructive work, but it does not authorize it.
+
+## Concept / evergreen note
+
+```text
+Title: <a specific idea, qualified claim, or question>
+Idea: <one coherent explanation in the author’s own words; label AI synthesis>
+Context and limits: <where it applies; assumptions, exceptions, counterevidence>
+Evidence: <source links and anchors; distinguish observation from inference>
+Connections: <target link + why it supports, contradicts, qualifies, or applies>
+Possible use: <optional project/output link>
+Open question / re-check trigger: <only if useful>
+```
+
+**Rule:** Evergreen means revisable and reusable, not permanently true. Do not manufacture links or split a complete argument to meet a size quota.
+
+## Project / topic hub or map of content
+
+```text
+Title / purpose: <outcome or question this navigation serves>
+Outcome / completion condition: <for a project; omit for a topic map>
+Read first: <canonical entry points>
+Knowledge map: <links grouped by purpose, with short relationship context>
+Decisions / open questions: <pointers; avoid duplicating their bodies>
+Task state / next action: <canonical task links for an active project>
+Reusable outputs: <actual artifacts and their status>
+```
+
+**Rule:** Create a hub only when it improves navigation. Link to one canonical record from multiple contexts instead of copying it.
+
+## Reusable output
+
+```text
+Artifact / stable location: <actual deliverable>
+Purpose and audience: <what it enables>
+Status: <draft, reviewed, or completed as actually established>
+Inputs: <source notes, decisions, and versions relevant to material claims>
+Acceptance / checks: <criteria and checks actually performed>
+Reuse conditions: <scope, assumptions, freshness limits>
+Feedback / lesson: <observed outcome only, if available>
+```
+
+**Rule:** Reference the output rather than duplicating it. Prepared, saved, published, and accepted are different states.

@@ -9,9 +9,9 @@ This README is a routing index for agents. Keep it short; detailed procedures be
 - Prefer the narrowest skill that directly matches the task.
 - Load additional skills only when their workflow is needed, not just because the topic is adjacent.
 - Start with the narrowest domain skill that matches the request: security, infrastructure, macOS, CI, deployment, web, or mobile work before broad engineering skills.
-- Use `diagnose`/`diagnosing-bugs` for root-cause work; use `tdd` once the target behavior is understood and ready to implement.
-- Use `to-spec`/`to-prd` → `to-tickets`/`to-issues` → `implement` for explicit planning-to-execution flows.
-- Use `wayfinder` for efforts too large or foggy for one session, then resolve the map one ticket at a time.
+- Use `diagnosing-bugs` for root-cause work; use `tdd` once the target behavior is understood and ready to implement.
+- Use `to-spec` → `to-tickets` → `implement-spec` for an entire spec delivered through a ticket graph; use `implement` for a piece of work from a spec or tickets.
+- Use `wayfinder` for efforts too large or foggy for one session, then resolve decision tickets one at a time until the route is clear.
 - Use `code-review` for two-axis Standards/Spec review of a branch, PR, WIP diff, or “review since X” request.
 - Use `wizard` only when a human must complete manual dashboard, credential, provisioning, migration, or cutover steps; do not use it for work the agent can perform directly.
 
@@ -20,15 +20,15 @@ This README is a routing index for agents. Keep it short; detailed procedures be
 
 Reachable only when you type them (`disable-model-invocation: true`).
 
-- [implement](./implement/SKILL.md) — Implement a piece of work based on a PRD or set of issues.
+- [implement](./implement/SKILL.md) — Implement a piece of work based on a spec or set of tickets.
+- [implement-spec](./implement-spec/SKILL.md) — Deliver an entire spec and its ticket graph on one integration branch using concurrent implementers, review, and tracker completion.
 - [grill-with-docs](./grill-with-docs/SKILL.md) — Challenge a plan or design while creating ADR and glossary documentation as decisions crystallise.
 - [improve-codebase-architecture](./improve-codebase-architecture/SKILL.md) — Scan a codebase for deepening opportunities, present them as a visual HTML report, then grill through whichever one you pick.
-- [to-issues](./to-issues/SKILL.md) — Break a plan, spec, or PRD into independently-grabbable issues on the project issue tracker using tracer-bullet vertical slices.
-- [to-prd](./to-prd/SKILL.md) — Turn the current conversation into a PRD and publish it to the project issue tracker — no interview, just synthesis of what you've already discussed.
+- [retro](./retro/SKILL.md) — Review a coding session and suggest improvements to the agent environment, navigation, checks, and guidance.
 - [to-spec](./to-spec/SKILL.md) — Turn the current conversation into a spec and publish it to the project issue tracker without interviewing for new scope.
 - [to-tickets](./to-tickets/SKILL.md) — Break a plan, spec, or conversation into tracer-bullet tickets with explicit blocking edges on the configured tracker.
 - [triage](./triage/SKILL.md) — Move issues and external PRs through a state machine of triage roles — categorise, verify, grill if needed, and write agent-ready briefs.
-- [wayfinder](./wayfinder/SKILL.md) — Map a huge, foggy effort into investigation tickets on the issue tracker and work the frontier one ticket at a time.
+- [wayfinder](./wayfinder/SKILL.md) — Map a large, uncertain effort into decision tickets on the issue tracker and resolve them until the path to the destination is clear.
 
 ## Model-invoked
 
@@ -37,19 +37,17 @@ Model- or user-reachable; descriptions are trigger-oriented so an agent can rout
 ### Planning and architecture
 
 - [writing-plans](./writing-plans/SKILL.md) — Use when a spec or requirements are ready and a multi-step implementation plan is needed before touching code.
-- [find-ideas](./find-ideas/SKILL.md) — Use when the user wants to find what to work on next in an existing project, audit progress, brainstorm a backlog, surface bugs and tech debt, or generate a prioritized list of ideas.
-- [domain-modeling](./domain-modeling/SKILL.md) — Build and sharpen a project's domain model.
+- [find-ideas](./find-ideas/SKILL.md) — Find new feature ideas, audit shipped features, or generate a prioritized product backlog for an existing project.
+- [domain-modeling](./domain-modeling/SKILL.md) — Clarify codebase terminology in `GLOSSARY.md` (or glossaries reached through `GLOSSARY-MAP.md`) and record architectural decisions in ADRs.
 - [codebase-design](./codebase-design/SKILL.md) — Shared vocabulary for designing deep modules.
 - [research](./research/SKILL.md) — Delegate high-trust primary-source investigation and capture cited findings as Markdown in the repo.
 
 ### Debugging, testing, and code flow
 
-- [diagnose](./diagnose/SKILL.md) — Disciplined diagnosis loop for hard bugs and performance regressions.
 - [diagnosing-bugs](./diagnosing-bugs/SKILL.md) — Diagnosis loop for hard bugs and performance regressions.
 - [tdd](./tdd/SKILL.md) — Test-driven development. Use when the user wants to build features or fix bugs test-first, mentions "red-green-refactor", or wants integration tests.
 - [prototype](./prototype/SKILL.md) — Build a throwaway prototype to answer a design question before committing to a product or implementation direction.
 - [code-review](./code-review/SKILL.md) — Review changes since a fixed point in parallel Standards and Spec axes, then report the findings side by side.
-- [resolving-merge-conflicts](./resolving-merge-conflicts/SKILL.md) — Use when you need to resolve an in-progress git merge/rebase conflict.
 
 ### Human-in-the-loop operations
 
@@ -72,6 +70,7 @@ Model- or user-reachable; descriptions are trigger-oriented so an agent can rout
 
 ### GitHub, CI, build, and deploy tools
 
+- [pr](./pr/SKILL.md) — Write a PR body with a visual summary, before/after evidence, and merge risk.
 - [ci-cd](./tools/ci-cd/SKILL.md) — Use when investigating or changing GitHub Actions or GitLab CI workflows, deployment gates, runners, artifacts, secrets, triggers, or rollbacks.
 - [github-ticket-intake](./tools/github-ticket-intake/SKILL.md) — Draft or create GitHub issues from messy request text.
 - [gh-fix-ci](./tools/gh-fix-ci/SKILL.md) — Use when a user asks to debug or fix failing GitHub PR checks that run in GitHub Actions.
@@ -84,14 +83,14 @@ Model- or user-reachable; descriptions are trigger-oriented so an agent can rout
 - [macos-design-guidelines](./domains/macos/macos-design-guidelines/SKILL.md) — Apple Human Interface Guidelines for Mac.
 - [macos-app-design](./domains/macos/macos-app-design/SKILL.md) — Use when designing or building native macOS applications with SwiftUI or AppKit.
 - [macos-accessibility](./domains/macos/macos-accessibility/SKILL.md) — Expert in macOS Accessibility APIs (AXUIElement) for desktop automation.
-- [app-planner](./domains/macos/macos-development/app-planner/SKILL.md) — Plans new macOS apps or analyzes existing projects.
-- [appkit-swiftui-bridge](./domains/macos/macos-development/appkit-swiftui-bridge/SKILL.md) — Expert guidance for hybrid AppKit-SwiftUI development.
-- [architecture-patterns](./domains/macos/macos-development/architecture-patterns/SKILL.md) — Deep dive into software architecture for macOS.
-- [coding-best-practices](./domains/macos/macos-development/coding-best-practices/SKILL.md) — Reviews macOS Swift 6+ code for modern idioms, SOLID principles, SwiftData patterns, and concurrency best practices.
-- [macos-capabilities](./domains/macos/macos-development/macos-capabilities/SKILL.md) — Expert guidance on macOS platform capabilities.
-- [macos-tahoe-apis](./domains/macos/macos-development/macos-tahoe-apis/SKILL.md) — Guide to macOS 26 Tahoe APIs and features.
-- [swiftdata-architecture](./domains/macos/macos-development/swiftdata-architecture/SKILL.md) — Deep dive into SwiftData design patterns and best practices.
-- [ui-review-tahoe](./domains/macos/macos-development/ui-review-tahoe/SKILL.md) — Comprehensive UI/UX review for macOS Tahoe apps.
+- [app-planner](./domains/macos/macos-development/app-planner/skill.md) — Plans new macOS apps or analyzes existing projects.
+- [appkit-swiftui-bridge](./domains/macos/macos-development/appkit-swiftui-bridge/skill.md) — Expert guidance for hybrid AppKit-SwiftUI development.
+- [architecture-patterns](./domains/macos/macos-development/architecture-patterns/skill.md) — Deep dive into software architecture for macOS.
+- [coding-best-practices](./domains/macos/macos-development/coding-best-practices/skill.md) — Reviews macOS Swift 6+ code for modern idioms, SOLID principles, SwiftData patterns, and concurrency best practices.
+- [macos-capabilities](./domains/macos/macos-development/macos-capabilities/skill.md) — Expert guidance on macOS platform capabilities.
+- [macos-tahoe-apis](./domains/macos/macos-development/macos-tahoe-apis/skill.md) — Guide to macOS 26 Tahoe APIs and features.
+- [swiftdata-architecture](./domains/macos/macos-development/swiftdata-architecture/skill.md) — Deep dive into SwiftData design patterns and best practices.
+- [ui-review-tahoe](./domains/macos/macos-development/ui-review-tahoe/skill.md) — Comprehensive UI/UX review for macOS Tahoe apps.
 
 ### Infrastructure domain skills
 

@@ -17,17 +17,17 @@ Start here when an agent needs to choose which section README to open. Each sect
 | Section | Skills | Use when |
 | --- | ---: | --- |
 | [Design](./design/README.md) | 16 | Design, visual prototyping, image generation, brand systems, frontend taste, and UI critique. |
-| [Engineering](./engineering/README.md) | 54 | Research, code review, wayfinding, planning, debugging, architecture, implementation, security, platform, CI, deploy, human-guided manual operations, and web/mobile performance. |
+| [Engineering](./engineering/README.md) | 53 | Research, code review, wayfinding, planning, debugging, architecture, implementation, security, platform, CI, deploy, human-guided manual operations, and web/mobile performance. |
 | [Forthright](./forthright/README.md) | 1 | High-compression internal communication mode for agent-to-agent work. |
 | [Marketing](./marketing/README.md) | 45 | Growth, positioning, acquisition, conversion, lifecycle, and revenue workflows. |
 | [Note-taking](./note-taking/README.md) | 2 | Second Brain retrieval, capture, handoffs, reviews, and Obsidian vault note work. |
 | [Personal](./personal/README.md) | 3 | User-specific writing, notes, and cookbook workflows. |
-| [Productivity](./productivity/README.md) | 6 | General workflow, handoff, teaching, grilling, formal logic, and skill-writing discipline. |
+| [Productivity](./productivity/README.md) | 8 | Handoffs, teaching, grilling, questionnaires, clarification, formal logic, and writing for agents. |
 | [SEO](./seo/README.md) | 20 | SEO/GEO research, technical audits, content, authority, monitoring, and reporting. |
 | [Tools](./tools/README.md) | 4 | Concrete tool-operation workflows for documents, PDFs, Obsidian, and browser automation. |
 
 ## Maintenance
 
 - Add a row here whenever a top-level skill section is added, removed, or renamed.
-- Keep the skill counts in this table aligned with real `SKILL.md` files; ignore test fixtures.
+- Keep the skill counts in this table aligned with real skill files (`SKILL.md`, including existing lowercase `skill.md` files); ignore test fixtures.
 - Update the relevant section README in the same change as any skill move or rename.

@@ -51,7 +51,7 @@ README:
 | Marketing | Growth, positioning, acquisition, conversion, lifecycle, revenue, and launch work. | [`skills/marketing/README.md`](skills/marketing/README.md) |
 | Note-taking | Second Brain retrieval, capture, handoffs, reviews, and Obsidian vault note work. | [`skills/note-taking/README.md`](skills/note-taking/README.md) |
 | Personal | User-specific writing, Obsidian, and recipe/cookbook workflows. | [`skills/personal/README.md`](skills/personal/README.md) |
-| Productivity | General workflow control: handoffs, teaching, grilling, formal logic, and writing better skills. | [`skills/productivity/README.md`](skills/productivity/README.md) |
+| Productivity | General workflow control: handoffs, teaching, grilling, questionnaires, clarification, formal logic, and writing for agents. | [`skills/productivity/README.md`](skills/productivity/README.md) |
 | SEO | SEO/GEO research, technical audits, content, schema, authority, monitoring, and reporting. | [`skills/seo/README.md`](skills/seo/README.md) |
 | Tools | Direct operation of documents, PDFs, Obsidian CLI, and Playwright/browser automation. | [`skills/tools/README.md`](skills/tools/README.md) |
 
@@ -113,8 +113,9 @@ Use the repository as a source of truth for agent behavior:
 
 ## Adding A Skill
 
-Use the [`writing-great-skills`](skills/productivity/writing-great-skills/SKILL.md)
-workflow. At minimum, every skill should include:
+Use the [`writing-for-agents`](skills/productivity/writing-for-agents/SKILL.md)
+reference and its [skill mechanics guide](skills/productivity/writing-for-agents/SKILL-MECHANICS.md).
+At minimum, every skill should include:
 
 - A `SKILL.md` file.
 - Frontmatter with `name` and `description`.

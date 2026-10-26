@@ -2,7 +2,6 @@
 name: macos-accessibility
 risk_level: MEDIUM
 description: "Expert in macOS Accessibility APIs (AXUIElement) for desktop automation. Specializes in secure automation of macOS applications with proper TCC permissions, element discovery, and system interaction. HIGH-RISK skill requiring strict security controls."
-model: sonnet
 ---
 
 ## 1. Overview

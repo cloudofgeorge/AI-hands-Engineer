@@ -7,7 +7,6 @@ compatibility: "Claude Code, skills.sh, ClawHub, Vercel Labs, Cursor, Windsurf, 
 homepage: "https://github.com/aaron-he-zhu/seo-geo-claude-skills"
 when_to_use: "Use when checking technical SEO health: site speed, Core Web Vitals, indexing, crawlability, robots.txt, sitemaps, canonical tags, 技术SEO, 网站速度, 核心网页指标, 索引问题, or Google找不到页面."
 argument-hint: "<URL or domain>"
-allowed-tools: WebFetch
 metadata:
   author: aaron-he-zhu
   version: "9.9.9"

@@ -17,6 +17,10 @@ node_modules/
 coverage/
 .nyc_output/
 .cache/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
 tmp/
 temp/
 .worktrees/

@@ -86,6 +86,12 @@ Model- or user-reachable; descriptions are trigger-oriented so an agent can rout
 
 ## Nested skill groups
 
+- [Security engineering](./security/README.md) — Existing security skills plus 14 Trail of Bits groups with 26 portable skills.
+- [Web and mobile engineering](./domains/web/README.md) — React composition, transitions, performance, accessibility, technical writing, and six Next.js workflows.
+- [Database engineering](./domains/database/README.md) — Supabase platform integration and PostgreSQL best practices.
+- [Authentication engineering](./domains/authentication/README.md) — Better Auth integration, scaffolding, and security hardening.
+- [Payments and API migrations](./domains/payments/README.md) — Stripe integration and API/SDK upgrades.
+- [Testing and validation](./tests/README.md) — Six Trail of Bits packages with 26 skills for property testing, mutation testing, fuzzing, regression investigation, patch validation, and specification compliance.
 - [Portable Superpowers](./superpowers/README.md) — Fourteen pinned skills for planning, debugging, verification, TDD, review, worktrees, and delegation; includes dependency and portability guidance. Choose this group explicitly when its workflow is preferred over the existing engineering alternatives.
 
 ## Maintenance

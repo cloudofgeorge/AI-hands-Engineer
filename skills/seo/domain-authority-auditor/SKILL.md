@@ -247,7 +247,7 @@ Same format for Trust and Eminence dimensions.
 <!-- runbook-sync start: source_sha256=6920bed5f82fd3fe0d6538d71e797e35823385fecfeabdfd81257d2c9d7922d3 block_sha256=be2750a3a71e6e1158c336ae276a2f0c74473b0cf02e1a40b7292d31c7517b12 -->
 ## §1 · Handoff Schema (authoritative)
 
-Every auditor-class handoff MUST follow this shape. Emitted audit artifact files (e.g., `memory/audits/**/*.md`) MUST include `class: auditor-output` in their YAML frontmatter so the PostToolUse Artifact Gate and guarded auditor archive checks can detect them by frontmatter class instead of prose pattern-matching. Files lacking this marker are not treated as audit artifacts regardless of body content.
+Every auditor-class handoff MUST follow this shape. Emitted audit artifact files (e.g., `memory/audits/**/*.md`) MUST include `class: auditor-output` in their YAML frontmatter so explicit validation and archive checks can identify them by frontmatter class instead of prose pattern-matching. Files lacking this marker are not treated as audit artifacts regardless of body content.
 
 ```yaml
 ---
@@ -390,7 +390,7 @@ Handoff:
       evidence: "..."
 ```
 
-**Why BLOCKED, not "capped at 40"**: the 40-tier cap number is unvalidated. Blocking forces manual review, which is more honest than publishing an eyeballed number. Calibration trigger: 30+ real multi-veto audits in `memory/audits/`, reviewed through `/aaron:guard --evals` plus maintainer calibration.
+**Why BLOCKED, not "capped at 40"**: the 40-tier cap number is unvalidated. Blocking forces manual review, which is more honest than publishing an eyeballed number. Calibration trigger: 30+ real multi-veto audits in `memory/audits/`, reviewed through explicit evaluation and maintainer calibration.
 
 **Note on dimension vs count**: the 2+ veto threshold counts **total veto failures across all dimensions**, not per-dimension. Example 3 shows T04 (Trust dim) + R10 (Referenceability dim) on different dimensions, but T03 + T09 both on the Trust dimension would also trigger BLOCKED. The veto count is dimension-agnostic.
 
@@ -436,7 +436,7 @@ Before emitting the handoff, the auditor verifies:
 
 If any check fails, force `status: BLOCKED` with `open_loops: ["artifact_gate_failed: <which check>"]`.
 
-> **Reliability note**: v9.9.9 adds a command-backed PostToolUse Artifact Gate that blocks malformed auditor artifacts with `class: auditor-output`. Self-check remains first line of defense; the hook enforces deterministic structural fields without reading artifact prose as instructions.
+> **Reliability note**: Validate the structural fields explicitly before returning an audit. This portable copy registers no artifact gate or completion hook.
 
 ---
 
@@ -545,7 +545,7 @@ When rendering a multi-finding report, group by tier (critical first, should-fix
 
 ### Artifact Gate — structural requirements (outside Runbook §4)
 
-Auditor-emitted audit files MUST satisfy these structural invariants for the PostToolUse Artifact Gate hook (`hooks/hooks.json`) to validate them:
+Auditor-emitted audit files MUST satisfy these structural invariants and be validated explicitly before reporting:
 
 1. **Location**: write to `memory/audits/<YYYY-MM-DD>-<topic>.md` (or the monthly archive file `memory/audits/YYYY-MM.md`)
 2. **Frontmatter**: include `class: auditor-output` in YAML frontmatter (enforced by Runbook §1)
@@ -651,7 +651,7 @@ For a complete assessment, pair this CITE audit with a CORE-EEAT content audit:
 - For content improvement: use `content-quality-auditor` on key pages
 - For backlink strategy: use `backlink-analyzer` for detailed link analysis
 - For competitor benchmarking: use `competitor-analysis` with CITE scores
-- For tracking progress: run `/aaron:report` with CITE score trends
+- For tracking progress: use the performance-reporting skill with CITE score trends
 ```
 
 ### Step 4.5: Apply Scoring Runbook

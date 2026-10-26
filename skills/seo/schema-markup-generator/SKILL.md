@@ -7,7 +7,6 @@ compatibility: "Claude Code, skills.sh, ClawHub, Vercel Labs, Cursor, Windsurf, 
 homepage: "https://github.com/aaron-he-zhu/seo-geo-claude-skills"
 when_to_use: "Use when generating JSON-LD structured data, Schema.org markup, or rich snippet markup for a page."
 argument-hint: "<page URL or content type>"
-allowed-tools: WebFetch
 metadata:
   author: aaron-he-zhu
   version: "9.9.9"

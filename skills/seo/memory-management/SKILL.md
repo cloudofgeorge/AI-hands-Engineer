@@ -130,7 +130,7 @@ What does [internal jargon] mean in this project?
 **Expected output**: a memory update plan, hot-cache changes, and a short handoff summary.
 
 - **Reads**: current campaign facts, new findings from other skills, approved decisions, and the shared [State Model](https://github.com/aaron-he-zhu/seo-geo-claude-skills/blob/main/references/state-model.md).
-- **Writes**: updates to `memory/hot-cache.md`, `memory/open-loops.md`, `memory/decisions.md`, and related `memory/` folders. Manages WARM-to-COLD archival in `memory/archive/`. Compiles `memory/wiki/index.md` (auto-refreshed) and wiki compiled pages (user-confirmed). **Sole writer of wiki (with delegated auto-refresh)**: `memory-management` owns all wiki writes semantically. For performance, the narrowly-scoped `memory/wiki/index.md` auto-refresh is delegated to the PostToolUse hook in [hooks/hooks.json](https://github.com/aaron-he-zhu/seo-geo-claude-skills/blob/main/hooks/hooks.json). Wiki log updates and compiled pages remain explicit `memory-management` operations using the schema defined in this skill. **Auditor handoff archiving** (v7.1.0+): when triggered by a direct user request or an auditor's explicit "Save these results?" yes-response, append a structured block to `memory/audits/YYYY-MM.md`. The Stop hook never initiates memory writes. The archive is consumed by `/aaron:guard --evals` and maintainer calibration for auditor cap review tied to [ADR-001](https://github.com/aaron-he-zhu/seo-geo-claude-skills/blob/main/references/decisions/2026-04-adr-001-inline-auditor-runbook.md). See [references/examples.md](https://github.com/aaron-he-zhu/seo-geo-claude-skills/blob/main/cross-cutting/memory-management/references/examples.md) for the exact archive block format and rules.
+- **Writes**: update `memory/hot-cache.md`, `memory/open-loops.md`, `memory/decisions.md`, and related memory files within the requested task. After a WARM file changes, explicitly refresh `memory/wiki/index.md`. Compiled pages and archival require the user's established authorization. Preserve provenance and the documented archive schema. No host hook performs writes or validation automatically.
 - **Promotes**: durable strategy, blockers, terminology, entity candidates, and major deltas. Applies temperature lifecycle rules: promote to HOT on high reference frequency, demote on staleness.
 - **Primary next skill**: use the `Next Best Skill` below when the project memory baseline is ready for active work.
 
@@ -142,12 +142,9 @@ What does [internal jargon] mean in this project?
 
 > See [references/promotion-demotion-rules.md](https://github.com/aaron-he-zhu/seo-geo-claude-skills/blob/main/cross-cutting/memory-management/references/promotion-demotion-rules.md) for the full promotion/demotion table and action procedures.
 
-### Hook Integration
+### Explicit lifecycle checks
 
-This skill's behavior is reinforced by the library's prompt-based hooks:
-- **SessionStart**: loads `memory/hot-cache.md`, reminds of stale open loops; loads `memory/wiki/<project>/index.md` (or global `index.md`) if it exists; provides light-user guidance based on Quick Status when `next_action` items are available
-- **PostToolUse**: after any WARM file write, silently refreshes `memory/wiki/index.md` (Phase 1); prompts to update compiled pages (Phase 2)
-- **Stop**: guarded allow-only completion check; returns `{"ok": true}`, honors `stop_hook_active`, never asks the user to save optional findings, and never initiates memory writes
+At the start of a memory-management task, read the hot cache, open loops, and existing wiki index. After a relevant file update, refresh the index and identify compiled pages that need review. Before finishing, check completion and state any unresolved gaps. Do not rely on automatic session, tool, or stop hooks.
 
 ## Data Sources
 
@@ -168,13 +165,13 @@ For new projects, create the directory structure defined in the [State Model](ht
 `memory-management` owns wiki schema and is the sole semantic writer. See [wiki-runbook.md](references/wiki-runbook.md) for execution detail.
 
 #### Phase 1 — Index (auto-refreshed)
-PostToolUse hook silently rebuilds `memory/wiki/index.md` after WARM writes. Index rows: precise (`score`/`status`/`next_action`/`mtime`) + best-effort (`summary`). Project-scoped index at `memory/wiki/<project>/index.md`. See [wiki-runbook.md §1](references/wiki-runbook.md).
+Explicitly rebuild `memory/wiki/index.md` after WARM writes. Index rows: precise (`score`/`status`/`next_action`/`mtime`) + best-effort (`summary`). Project-scoped index at `memory/wiki/<project>/index.md`. See [wiki-runbook.md §1](references/wiki-runbook.md).
 
 #### Phase 2 — Compiled Pages (user-confirmed)
 On user request or 3+ WARM mentions of an entity, generate `memory/wiki/<project>/<type>-<slug>.md` with source SHA-256 hashes. Contradictions resolved via SessionStart conversational prompt, not file editing. Write log entry to `memory/wiki/log.md`. See [wiki-runbook.md §2-§5](references/wiki-runbook.md).
 
 #### Phase 3 — User-Initiated Retirement
-WARM files fully covered by compiled wiki pages may be retired to `memory/archive/`. Always user-confirmed via `/aaron:guard --wiki --retire-preview` followed by explicit memory-management invocation. COLD files receive `originally_at` / `retired_on` / `retired_because_compiled` frontmatter to preserve recovery path. Single retire call hard-capped at 5 files. See [wiki-runbook.md §7](references/wiki-runbook.md).
+WARM files fully covered by compiled wiki pages may be retired to `memory/archive/`. Present a retirement preview and apply it only within the user's established archival authorization. COLD files receive `originally_at` / `retired_on` / `retired_because_compiled` frontmatter to preserve recovery path. Single retire call hard-capped at 5 files. See [wiki-runbook.md §7](references/wiki-runbook.md).
 
 ### 2. Context Lookup Flow
 

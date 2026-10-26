@@ -7,7 +7,6 @@ compatibility: "Claude Code, skills.sh, ClawHub, Vercel Labs, Cursor, Windsurf, 
 homepage: "https://github.com/aaron-he-zhu/seo-geo-claude-skills"
 when_to_use: "Use when auditing a page's on-page SEO health, checking heading structure, keyword placement, image optimization, or content quality signals."
 argument-hint: "<URL> [keyword]"
-allowed-tools: WebFetch
 metadata:
   author: aaron-he-zhu
   version: "9.9.9"

@@ -2,11 +2,9 @@
 
 Fourteen individually addressable skills copied from [obra/superpowers](https://github.com/obra/superpowers) at commit [`2ce8aa15d05bd57213e6f746f953aafb7ded7a8b`](https://github.com/obra/superpowers/tree/2ce8aa15d05bd57213e6f746f953aafb7ded7a8b), imported on 26 October 2026.
 
-Each skill folder includes its upstream instructions and supporting files. The imported files are unmodified. [UPSTREAM.json](./UPSTREAM.json) records every upstream path, Git blob hash, and executable mode. Redistribution is covered by the included [MIT license](./LICENSE).
-
 ## Choose a skill
 
-All fourteen upstream manifests are model-invoked: they have trigger descriptions and do not set `disable-model-invocation: true`. Explicit selection is useful when another installed collection offers a similar workflow.
+All fourteen skill manifests are model-invoked: they have trigger descriptions and do not set `disable-model-invocation: true`. Explicit selection is useful when another installed collection offers a similar workflow.
 
 | Skill | Use when |
 | --- | --- |
@@ -60,9 +58,3 @@ Upstream references such as `superpowers:systematic-debugging` identify a siblin
 Shared runtime mappings are included under [using-superpowers/references](./using-superpowers/references/). This is a support-only directory: it has no `SKILL.md`. The upstream startup/bootstrap skill, plugin manifests, and session hooks are not installed. Automatic full-plugin workflow activation therefore differs from this portable selection.
 
 Tool mappings are snapshots. Use the host's actual tool schemas, permissions, and user instructions when they differ from upstream guidance. Portability of the instruction files does not guarantee that every host provides subagents, transcript access, Git operations, Node.js, or other required execution tools. The optional visual companion retains upstream behavior; review [its guidance](./brainstorming/visual-companion.md) and scripts before use.
-
-## Updating
-
-Fetch the desired upstream revision into a temporary directory, compare it with `UPSTREAM.json`, and replace only these imported paths after reviewing the changes. Refresh the license, shared references, hashes, and file modes together. Keep this local README and routing entries. The current import is pinned and does not auto-update.
-
-Validation of this import checks file integrity, layout, manifest fields, referenced files, and executable permissions. It is not a cross-host behavioral test of the workflows.

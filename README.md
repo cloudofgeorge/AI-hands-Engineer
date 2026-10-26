@@ -66,6 +66,10 @@ Each section README separates:
 - **Nested skill groups** — use the section README to find the correct skill
   when several skills cover adjacent tasks.
 
+### Portability
+
+Skills contain methods, references, templates, and reusable local helpers. Host-specific plugin packaging and runtime dispatch have been removed. See [the portability convention](skills/PORTABILITY.md) for resource paths, optional review roles, and capability limitations.
+
 ### Hermes installation note
 
 For Hermes Agent, install or point `skills.external_dirs` at this repository's

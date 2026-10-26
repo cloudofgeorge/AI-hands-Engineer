@@ -4,6 +4,8 @@ Routing index for the skill sections in this repository.
 
 Start here when an agent needs to choose which section README to open. Each section README then routes between user-invoked and model-invoked skills.
 
+Read [the portability convention](./PORTABILITY.md) when adapting tool or resource-path examples to your host.
+
 ## Routing principles
 
 - Prefer the narrowest section and skill that directly matches the task.
@@ -17,7 +19,7 @@ Start here when an agent needs to choose which section README to open. Each sect
 | Section | Skills | Use when |
 | --- | ---: | --- |
 | [Design](./design/README.md) | 15 | Design, visual prototyping, image generation, brand systems, frontend taste, and UI critique. |
-| [Engineering](./engineering/README.md) | 53 | Research, architecture, debugging, TDD, security, platform, CI, deploy, web/mobile performance, and portable Superpowers workflows. |
+| [Engineering](./engineering/README.md) | 123 | Research, architecture, debugging, testing, security, databases, authentication, payments, CI, deployment, web/mobile performance, Next.js, and portable Superpowers workflows. |
 | [Forthright](./forthright/README.md) | 1 | High-compression internal communication mode for agent-to-agent work. |
 | [Marketing](./marketing/README.md) | 45 | Growth, positioning, acquisition, conversion, lifecycle, and revenue workflows. |
 | [Note-taking](./note-taking/README.md) | 2 | Second Brain retrieval, capture, handoffs, reviews, and Obsidian vault note work. |

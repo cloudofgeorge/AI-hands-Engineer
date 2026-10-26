@@ -84,6 +84,10 @@ Model- or user-reachable; descriptions are trigger-oriented so an agent can rout
 - [vercel-react-best-practices](./domains/web/vercel-react-best-practices/SKILL.md) — Use when writing, reviewing, refactoring, or optimizing React/Next.js code for Vercel-style performance patterns.
 - [vercel-react-native-skills](./domains/web/vercel-react-native-skills/SKILL.md) — Use when building React Native or Expo apps, optimizing mobile performance, implementing animations, or working with native modules.
 
+## Nested skill groups
+
+- [Portable Superpowers](./superpowers/README.md) — Fourteen pinned skills for planning, debugging, verification, TDD, review, worktrees, and delegation; includes dependency and portability guidance. Choose this group explicitly when its workflow is preferred over the existing engineering alternatives.
+
 ## Maintenance
 
 - Update this README whenever a skill is added, removed, renamed, or moved in this section.

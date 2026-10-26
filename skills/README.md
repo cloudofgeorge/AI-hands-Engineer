@@ -17,7 +17,7 @@ Start here when an agent needs to choose which section README to open. Each sect
 | Section | Skills | Use when |
 | --- | ---: | --- |
 | [Design](./design/README.md) | 15 | Design, visual prototyping, image generation, brand systems, frontend taste, and UI critique. |
-| [Engineering](./engineering/README.md) | 39 | Research, feature discovery, architecture, debugging, TDD, prototyping, security, platform, CI, deploy, human-guided manual operations, and web/mobile performance. |
+| [Engineering](./engineering/README.md) | 53 | Research, architecture, debugging, TDD, security, platform, CI, deploy, web/mobile performance, and portable Superpowers workflows. |
 | [Forthright](./forthright/README.md) | 1 | High-compression internal communication mode for agent-to-agent work. |
 | [Marketing](./marketing/README.md) | 45 | Growth, positioning, acquisition, conversion, lifecycle, and revenue workflows. |
 | [Note-taking](./note-taking/README.md) | 2 | Second Brain retrieval, capture, handoffs, reviews, and Obsidian vault note work. |

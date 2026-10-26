@@ -45,7 +45,7 @@ README:
 
 | Section | Use when | Index |
 | --- | --- | --- |
-| Design | Design critique, high-fidelity prototypes, interactive demos, slides, animations, image generation, brand systems, or frontend taste workflows. | [`skills/design/README.md`](skills/design/README.md) |
+| Design | Design critique, HTML prototypes, interactive demos, slides, animations, reference images, brand systems, and frontend taste workflows for pages and app screens. | [`skills/design/README.md`](skills/design/README.md) |
 | Engineering | Research, feature discovery, architecture, debugging, TDD, prototyping, security, CI, deployment, human-guided manual operations, macOS, and web. | [`skills/engineering/README.md`](skills/engineering/README.md) |
 | Forthright | Agent-to-agent handoffs and compact internal operational writing. | [`skills/forthright/README.md`](skills/forthright/README.md) |
 | Marketing | Growth, positioning, acquisition, conversion, lifecycle, revenue, and launch work. | [`skills/marketing/README.md`](skills/marketing/README.md) |

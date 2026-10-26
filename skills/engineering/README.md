@@ -10,25 +10,14 @@ This README is a routing index for agents. Keep it short; detailed procedures be
 - Load additional skills only when their workflow is needed, not just because the topic is adjacent.
 - Start with the narrowest domain skill that matches the request: security, infrastructure, macOS, CI, deployment, web, or mobile work before broad engineering skills.
 - Use `diagnosing-bugs` for root-cause work; use `tdd` once the target behavior is understood and ready to implement.
-- Use `to-spec` → `to-tickets` → `implement-spec` for an entire spec delivered through a ticket graph; use `implement` for a piece of work from a spec or tickets.
-- Use `wayfinder` for efforts too large or foggy for one session, then resolve decision tickets one at a time until the route is clear.
-- Use `code-review` for two-axis Standards/Spec review of a branch, PR, WIP diff, or “review since X” request.
 - Use `wizard` only when a human must complete manual dashboard, credential, provisioning, migration, or cutover steps; do not use it for work the agent can perform directly.
-
 
 ## User-invoked
 
 Reachable only when you type them (`disable-model-invocation: true`).
 
-- [implement](./implement/SKILL.md) — Implement a piece of work based on a spec or set of tickets.
-- [implement-spec](./implement-spec/SKILL.md) — Deliver an entire spec and its ticket graph on one integration branch using concurrent implementers, review, and tracker completion.
 - [grill-with-docs](./grill-with-docs/SKILL.md) — Challenge a plan or design while creating ADR and glossary documentation as decisions crystallise.
-- [improve-codebase-architecture](./improve-codebase-architecture/SKILL.md) — Scan a codebase for deepening opportunities, present them as a visual HTML report, then grill through whichever one you pick.
 - [retro](./retro/SKILL.md) — Review a coding session and suggest improvements to the agent environment, navigation, checks, and guidance.
-- [to-spec](./to-spec/SKILL.md) — Turn the current conversation into a spec and publish it to the project issue tracker without interviewing for new scope.
-- [to-tickets](./to-tickets/SKILL.md) — Break a plan, spec, or conversation into tracer-bullet tickets with explicit blocking edges on the configured tracker.
-- [triage](./triage/SKILL.md) — Move issues and external PRs through a state machine of triage roles — categorise, verify, grill if needed, and write agent-ready briefs.
-- [wayfinder](./wayfinder/SKILL.md) — Map a large, uncertain effort into decision tickets on the issue tracker and resolve them until the path to the destination is clear.
 
 ## Model-invoked
 
@@ -36,7 +25,6 @@ Model- or user-reachable; descriptions are trigger-oriented so an agent can rout
 
 ### Planning and architecture
 
-- [writing-plans](./writing-plans/SKILL.md) — Use when a spec or requirements are ready and a multi-step implementation plan is needed before touching code.
 - [find-ideas](./find-ideas/SKILL.md) — Find new feature ideas, audit shipped features, or generate a prioritized product backlog for an existing project.
 - [domain-modeling](./domain-modeling/SKILL.md) — Clarify codebase terminology in `GLOSSARY.md` (or glossaries reached through `GLOSSARY-MAP.md`) and record architectural decisions in ADRs.
 - [codebase-design](./codebase-design/SKILL.md) — Shared vocabulary for designing deep modules.
@@ -47,20 +35,10 @@ Model- or user-reachable; descriptions are trigger-oriented so an agent can rout
 - [diagnosing-bugs](./diagnosing-bugs/SKILL.md) — Diagnosis loop for hard bugs and performance regressions.
 - [tdd](./tdd/SKILL.md) — Test-driven development. Use when the user wants to build features or fix bugs test-first, mentions "red-green-refactor", or wants integration tests.
 - [prototype](./prototype/SKILL.md) — Build a throwaway prototype to answer a design question before committing to a product or implementation direction.
-- [code-review](./code-review/SKILL.md) — Review changes since a fixed point in parallel Standards and Spec axes, then report the findings side by side.
 
 ### Human-in-the-loop operations
 
 - [wizard](./wizard/SKILL.md) — Generate an interactive Bash guide for manual credential, dashboard, provisioning, migration, or cutover steps that only a human can perform.
-
-
-### Optimization and simplification
-
-- [ponytail](./optimization/ponytail/ponytail/SKILL.md) — Forces the laziest solution that actually works, simplest, shortest, most minimal.
-- [ponytail-review](./optimization/ponytail/ponytail-review/SKILL.md) — Code review focused exclusively on over-engineering.
-- [ponytail-audit](./optimization/ponytail/ponytail-audit/SKILL.md) — Whole-repo audit for over-engineering; ranks what to delete, simplify, or replace with stdlib/native equivalents.
-- [ponytail-debt](./optimization/ponytail/ponytail-debt/SKILL.md) — Harvest `ponytail:` comments into a debt ledger for deliberate shortcuts and deferred cleanup.
-- [ponytail-help](./optimization/ponytail/ponytail-help/SKILL.md) — Quick-reference card for all ponytail modes, skills, and commands.
 
 ### Security
 
@@ -105,7 +83,6 @@ Model- or user-reachable; descriptions are trigger-oriented so an agent can rout
 - [develop-web-game](./domains/web/develop-web-game/SKILL.md) — Use when Codex is building or iterating on a web game and needs a reliable development and testing loop.
 - [vercel-react-best-practices](./domains/web/vercel-react-best-practices/SKILL.md) — Use when writing, reviewing, refactoring, or optimizing React/Next.js code for Vercel-style performance patterns.
 - [vercel-react-native-skills](./domains/web/vercel-react-native-skills/SKILL.md) — Use when building React Native or Expo apps, optimizing mobile performance, implementing animations, or working with native modules.
-
 
 ## Maintenance
 

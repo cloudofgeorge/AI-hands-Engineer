@@ -137,4 +137,4 @@ After writing the files, print the list of paths created.
 
 ## Converting to Issues
 
-If the user wants to push items to GitHub after reviewing the doc, hand off to the `to-issues` or `triage` skill rather than creating issues directly here.
+If the user wants to push items to GitHub after reviewing the doc, hand off to the [github-ticket-intake](../tools/github-ticket-intake/SKILL.md) skill rather than creating issues directly here.

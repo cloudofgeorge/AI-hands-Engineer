@@ -36,4 +36,4 @@ By default, deliver the finished article without internal outlines, checklists, 
 - When the user requests finished text, do not substitute approval of an obvious outline.
 - Use meaningful paragraphs for this process, not mechanical splitting borrowed from other templates.
 
-Use `references/examples.md` to calibrate editing decisions. Method sources and validation scenarios are in `references/validation.md`.
+Use `references/examples.md` to calibrate editing decisions.

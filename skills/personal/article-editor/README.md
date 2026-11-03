@@ -24,4 +24,3 @@ The existing [edit-article](../edit-article/SKILL.md) remains a separate option 
 
 - [SKILL.md](./SKILL.md) — instructions for the agent.
 - [Examples](./references/examples.md) — before-and-after editing decisions.
-- [Rationale and validation](./references/validation.md) — method sources and skill maintenance guidance.

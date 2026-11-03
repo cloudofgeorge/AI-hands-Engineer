@@ -9,6 +9,11 @@ The repository is intentionally lightweight: the Markdown files are the product.
 There is no application runtime, build step, or package manager setup for the
 root repository.
 
+Some individual workflows do need Python, Node.js, browser tooling, or other
+software. See [Skill requirements and setup](skills/REQUIREMENTS.md) for the
+requirements by task, installation commands, and checks. Install only what your
+selected workflow needs.
+
 ## Repository Layout
 
 ```text

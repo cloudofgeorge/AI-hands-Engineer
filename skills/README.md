@@ -6,6 +6,9 @@ Start here when an agent needs to choose which section README to open. Each sect
 
 Read [the portability convention](./PORTABILITY.md) when adapting tool or resource-path examples to your host.
 
+Before running helpers, check [Skill requirements and setup](./REQUIREMENTS.md)
+for runtimes, packages, system tools, browsers, and account access by workflow.
+
 ## Routing principles
 
 - Prefer the narrowest section and skill that directly matches the task.
@@ -33,3 +36,4 @@ Read [the portability convention](./PORTABILITY.md) when adapting tool or resour
 - Add a row here whenever a top-level skill section is added, removed, or renamed.
 - Keep the skill counts in this table aligned with real skill files (`SKILL.md`, including existing lowercase `skill.md` files); ignore test fixtures.
 - Update the relevant section README in the same change as any skill move or rename.
+- Update [requirements](./REQUIREMENTS.md) when a skill adds or changes installation prerequisites.

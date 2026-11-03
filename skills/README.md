@@ -23,7 +23,7 @@ Read [the portability convention](./PORTABILITY.md) when adapting tool or resour
 | [Forthright](./forthright/README.md) | 1 | High-compression internal communication mode for agent-to-agent work. |
 | [Marketing](./marketing/README.md) | 45 | Growth, positioning, acquisition, conversion, lifecycle, and revenue workflows. |
 | [Note-taking](./note-taking/README.md) | 2 | Second Brain retrieval, capture, handoffs, reviews, and Obsidian vault note work. |
-| [Personal](./personal/README.md) | 3 | User-specific writing, notes, and cookbook workflows. |
+| [Personal](./personal/README.md) | 4 | Article writing and editing, personal notes, and cookbook workflows. |
 | [Productivity](./productivity/README.md) | 8 | Handoffs, teaching, grilling, questionnaires, clarification, formal logic, and writing for agents. |
 | [SEO](./seo/README.md) | 20 | SEO/GEO research, technical audits, content, authority, monitoring, and reporting. |
 | [Tools](./tools/README.md) | 4 | Concrete tool-operation workflows for documents, PDFs, Obsidian, and browser automation. |

@@ -1,6 +1,6 @@
 # Personal
 
-User-specific writing, notes, and cookbook workflows that depend on the owner’s personal setup.
+Article writing and editing, personal notes, and cookbook workflows.
 
 This README is a routing index for agents. Keep it short; detailed procedures belong in each linked `SKILL.md`.
 
@@ -8,8 +8,9 @@ This README is a routing index for agents. Keep it short; detailed procedures be
 
 - Prefer the narrowest skill that directly matches the task.
 - Load additional skills only when their workflow is needed, not just because the topic is adjacent.
-- Use these when the task explicitly touches the user’s personal notes, writing drafts, or cookbook workflow.
-- Prefer broader public skills when the task is not tied to this personal setup.
+- Use `article-editor` for writing or editing reader-facing articles with logic checks and meaning-preserving cuts; it does not require a personal setup.
+- Use `edit-article` when the user wants its section-by-section approval workflow and short-paragraph format; do not combine its paragraph limit with `article-editor` by default.
+- Use the notes and cookbook skills when the task touches the user’s personal setup.
 
 ## User-invoked
 
@@ -23,6 +24,7 @@ Model- or user-reachable; descriptions are trigger-oriented so an agent can rout
 
 ### Personal workflows
 
+- [article-editor](./article-editor/SKILL.md) — Write, rewrite, or shorten explanatory articles while checking logic, preserving necessary conditions, and removing repetition.
 - [edit-article](./edit-article/SKILL.md) — Edit and improve articles by restructuring sections, improving clarity, and tightening prose.
 - [obsidian-vault](./obsidian-vault/SKILL.md) — Search, create, and manage notes in the Obsidian vault with wikilinks and index notes.
 - [recipe-to-cookbook](./recipe-to-cookbook/SKILL.md) — Turns YouTube cooking videos, Shorts, written recipes, or ingredient lists into a structured cookbook-style recipe in Russian.

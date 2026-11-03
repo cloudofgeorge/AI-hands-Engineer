@@ -1,27 +1,27 @@
-# Редактор статей
+# Article Editor
 
-`article-editor` помогает писать, переписывать и сокращать объяснительные, рабочие и аналитические статьи. Приоритет — логика и точность, затем понятность и краткость.
+`article-editor` helps write, rewrite, and shorten explanatory, workplace, and analytical articles. It prioritizes logic and accuracy, followed by clarity and brevity.
 
-## Использование
+## Usage
 
-Подключите каталог навыка целиком, включая `references/`, через механизм навыков своего агента. Можно также передать агенту [SKILL.md](./SKILL.md), сохранив доступ к дополнительным файлам. Автоматический выбор зависит от среды; для явного вызова укажите имя навыка в запросе.
+Load the entire skill directory, including `references/`, through your agent's skill mechanism. You can also provide [SKILL.md](./SKILL.md) directly while keeping its supporting files accessible. Automatic selection depends on the environment; name the skill in your prompt to invoke it explicitly.
 
-Пример:
+Example:
 
-> Используй article-editor. Отредактируй статью ниже для новых сотрудников: проверь логику, объясни необходимые термины и убери повторы. Сохрани условия и исключения. Покажи готовый текст.
+> Use article-editor. Edit the article below for new employees: check the logic, explain necessary terms, and remove repetition. Preserve conditions and exceptions. Show the finished text.
 
-Для новой статьи передайте тему, аудиторию, цель и исходные материалы. Если важны объём, тон или согласование плана, укажите это отдельно.
+For a new article, provide the topic, audience, purpose, and source material. Specify any requirements for length, tone, or outline approval separately.
 
-## Результат
+## Result
 
-По умолчанию агент выдаёт готовую статью без внутренних чек-листов. При противоречии в исходных материалах он уточняет действующий источник или явно обозначает неполноту текста, а не выбирает удобную версию.
+By default, the agent delivers a finished article without internal checklists. When source materials contradict each other, it asks which source is current or explicitly marks the text as incomplete rather than choosing a convenient version.
 
-Навык не задаёт обязательную длину абзацев и не требует сокращать текст на фиксированный процент. Он не предназначен для художественной прозы или запросов только на исправление опечаток. Для проверки внешних фактов агенту нужен доступ к соответствующим источникам.
+The skill does not impose a fixed paragraph length or require shortening by a fixed percentage. It is not intended for creative fiction or requests to fix typos only. To verify external facts, the agent needs access to the relevant sources.
 
-Существующий [edit-article](../edit-article/SKILL.md) остаётся отдельным вариантом с согласованием разделов и ограничением длины абзацев. Для обычной работы над логикой и ясностью статьи выбирайте `article-editor`.
+The existing [edit-article](../edit-article/SKILL.md) remains a separate option with section approval and paragraph-length limits. For routine work on an article's logic and clarity, choose `article-editor`.
 
-## Файлы
+## Files
 
-- [SKILL.md](./SKILL.md) — инструкция агенту.
-- [Примеры](./references/examples.md) — редакторские решения «до/после».
-- [Основания и проверка](./references/validation.md) — источники метода и рекомендации по сопровождению навыка.
+- [SKILL.md](./SKILL.md) — instructions for the agent.
+- [Examples](./references/examples.md) — before-and-after editing decisions.
+- [Rationale and validation](./references/validation.md) — method sources and skill maintenance guidance.

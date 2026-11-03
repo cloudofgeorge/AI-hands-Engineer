@@ -1,47 +1,39 @@
 ---
 name: article-editor
 description: "Use when writing or editing articles and explainers."
-version: 0.1.0
-author: "Георгий Конюшков, Hermes Agent"
-license: Private
-platforms: [linux, macos, windows]
-metadata:
-  hermes:
-    tags: [writing, editing, articles, clarity, logic]
-    related_skills: []
 ---
 
-# Редактор статей
+# Article Editor
 
-Создавай связный текст, который отвечает на вопрос читателя. Приоритет: точность и логика → необходимые объяснения → ясность → краткость. Сокращение полезно, только если смысл сохранён.
+Create a coherent text that answers the reader's question. Prioritize accuracy and logic → necessary explanations → clarity → brevity. Shortening helps only when meaning is preserved.
 
 ## When to Use
 
-Написание, переписывание, сокращение и редактура объяснительных, рабочих и аналитических статей. Триггеры: «напиши статью», «сделай понятнее», «убери воду», «проверь логику». Не распространяй этот процесс на короткие ответы в чате, художественную прозу или запрос только на исправление опечаток. Язык и формат — по запросу пользователя.
+Writing, rewriting, shortening, and editing explanatory, workplace, and analytical articles. Triggers include "write an article," "make this clearer," "cut the fluff," and "check the logic." Do not apply this process to short chat replies, creative fiction, or requests to fix typos only. Follow the user's requested language and format.
 
-## Процесс
+## Process
 
-1. **Задача читателя.** Из контекста определи аудиторию, главный вопрос, исходные знания и результат чтения. Используй уже предоставленные сведения. Уточняй только пробел, который меняет содержание или вывод; иначе работай с разумной интерпретацией. Готово, когда понятно, что входит в статью и что лишнее.
+1. **The reader's task.** Infer the audience, main question, prior knowledge, and intended reading outcome from the context. Use information already provided. Ask only about a gap that changes the content or conclusion; otherwise, proceed with a reasonable interpretation. This step is complete when it is clear what belongs in the article and what does not.
 
-2. **Смысловой план.** Для каждого раздела зафиксируй тезис и его пользу. Выстраивай объяснение в порядке понимания: необходимые понятия перед использованием, основания перед выводом. В практической статье основной ответ давай рано. Если пользователь просит согласовать план — остановись на плане. В остальных случаях план рабочий, а результат — статья.
+2. **Content outline.** Identify each section's main point and value to the reader. Arrange explanations in the order needed for understanding: introduce necessary concepts before using them and provide grounds before drawing conclusions. In a practical article, give the main answer early. If the user asks to approve the outline, stop at the outline. Otherwise, keep the outline internal and deliver the article.
 
-3. **Черновик.** Один абзац развивает одну мысль. Сохраняй авторский смысл и тон при редактуре; исправляй неподтверждённую уверенность, а не усиливай её. Списки используй для шагов или перечислений, таблицы — для сравнения. Примеры добавляй там, где без них остаётся непонятная абстракция.
+3. **Draft.** Develop one idea per paragraph. When editing, preserve the author's meaning and tone; correct unsupported certainty rather than amplifying it. Use lists for steps or enumerations and tables for comparisons. Add examples where an abstraction would otherwise remain unclear.
 
-4. **Проверка логики и опоры.** Составь рабочий обратный план: мысль и функция каждого абзаца. Исправь скачки, противоречия и выводы без оснований. Отличай наблюдение от причины, предположение от факта, локальный результат от обобщения. Сверяй ключевые утверждения с предоставленным материалом; внешние факты проверяй инструментами, когда задача допускает исследование. Недостаток сведений обозначай, а не заполняй выдуманными данными или ссылками. При конфликте источников сохраняй различия: если он блокирует инструкцию, запроси действующий источник либо явно обозначь текст как частичный. Не выбирай версию по удобству.
+4. **Check logic and support.** Build an internal reverse outline: the idea and function of each paragraph. Fix leaps in reasoning, contradictions, and unsupported conclusions. Distinguish observation from causation, assumptions from facts, and local results from generalizations. Check key claims against the supplied material; verify external facts with tools when the task allows research. Acknowledge missing information rather than filling gaps with invented data or references. When sources conflict, preserve the distinctions: if the conflict prevents a usable instruction, ask for the current source or explicitly label the text as partial. Do not choose the most convenient version.
 
-5. **Редактура.** Дай необходимым терминам понятное объяснение при первом употреблении. Убери общие вступления, пустые оценки и отступления. В короткой практической статье используй форму: основной ответ → необходимые основания и условия → следующий шаг. Размести каждое основание в одном месте; проверь смысловые дубли, даже если слова разные. Если следующий шаг уже дан, закончи статью: отдельное заключение, повторяющее ответ или ограничение, не нужно. Добавляй оговорку только при реальной неопределённости; явное условие не превращай в лишний вопрос. Применяй пользовательский объём; собственных квот слов, символов на абзац и процентов сокращения не вводи.
+5. **Edit.** Explain necessary terms clearly at first use. Remove generic introductions, empty judgments, and digressions. For a short practical article, use this structure: main answer → necessary grounds and conditions → next step. Put each supporting point in one place; check for semantic repetition even when the wording differs. If the next step is already given, end the article: a separate conclusion repeating the answer or limitation is unnecessary. Add a caveat only when there is genuine uncertainty; do not turn an explicit condition into an unnecessary question. Follow the user's length requirements; do not impose your own word quotas, character limits per paragraph, or percentage reductions.
 
-6. **Сверка смысла.** После правок проверь числа, даты, термины, действующих лиц, порядок действий, условия, исключения и степень уверенности. При нехватке связки добавь объяснение. Готово, когда текст решает исходную задачу и остаётся точным после сокращения.
+6. **Verify meaning.** After editing, check numbers, dates, terms, actors, action order, conditions, exceptions, and degree of certainty. Add an explanation where a logical connection is missing. This step is complete when the text meets the original need and remains accurate after shortening.
 
-## Выход
+## Output
 
-По умолчанию — готовая статья без внутренних планов, чек-листов, самооценки и отчёта о редактировании. Реальное ограничение, мешающее использовать статью, сообщай явно. Если запрошен разбор — укажи конкретный фрагмент, дефект и исправление.
+By default, deliver the finished article without internal outlines, checklists, self-assessments, or editing reports. Explicitly disclose any real limitation that prevents the article from being used. If analysis is requested, identify the specific passage, defect, and correction.
 
-## Частые ошибки
+## Common Mistakes
 
-- Гладкая формулировка не доказывает истинность: проверяй основания отдельно.
-- Короткий текст не обязательно понятнее: сохраняй необходимые связи и ограничения.
-- При запросе готового текста не подменяй его согласованием очевидного плана.
-- Для этого процесса используй смысловые абзацы, а не механическое дробление из чужих шаблонов.
+- Polished wording does not prove a claim true: check its support separately.
+- A shorter text is not necessarily clearer: preserve necessary connections and limitations.
+- When the user requests finished text, do not substitute approval of an obvious outline.
+- Use meaningful paragraphs for this process, not mechanical splitting borrowed from other templates.
 
-Для калибровки редактуры используй `references/examples.md`. Источники метода и проверочные сценарии: `references/validation.md`.
+Use `references/examples.md` to calibrate editing decisions. Method sources and validation scenarios are in `references/validation.md`.

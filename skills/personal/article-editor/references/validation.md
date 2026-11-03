@@ -1,27 +1,27 @@
-# Основания и проверка навыка
+# Skill Rationale and Validation
 
-Этот файл — справка для сопровождения навыка, не обязательный этап каждой статьи.
+This file is a maintenance reference, not a required step for every article.
 
-## Источники метода
+## Method Sources
 
-- Google, задача читателя и границы документа: https://developers.google.com/tech-writing/one/documents
-- UW–Madison, обратный план абзацев: https://writing.wisc.edu/handbook/processandstructure/reverseoutlines/
-- GOV.UK, ясный язык и объяснение терминов: https://guidance.publishing.service.gov.uk/writing-to-gov-uk-standards/writing-guidelines/clear-language
-- Purdue, лаконичность не равна минимальной длине: https://owl.purdue.edu/owl/general_writing/academic_writing/conciseness/index.html
-- Anthropic, минимальные инструкции, примеры и сравнение с baseline: https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices
-- Hermes, навыки и дополнительные материалы: https://hermes-agent.nousresearch.com/docs/guides/work-with-skills
+- Google, the reader's task and document scope: https://developers.google.com/tech-writing/one/documents
+- UW–Madison, reverse outlining paragraphs: https://writing.wisc.edu/handbook/processandstructure/reverseoutlines/
+- GOV.UK, clear language and explaining terms: https://guidance.publishing.service.gov.uk/writing-to-gov-uk-standards/writing-guidelines/clear-language
+- Purdue, conciseness is not the same as minimum length: https://owl.purdue.edu/owl/general_writing/academic_writing/conciseness/index.html
+- Anthropic, minimal instructions, examples, and baseline comparisons: https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices
+- Hermes, skills and supporting materials: https://hermes-agent.nousresearch.com/docs/guides/work-with-skills
 
-Это редакционные и технические рекомендации, не доказательство универсальной эффективности навыка. Англоязычные ограничения длины не переноси механически на русский.
+These are editorial and technical recommendations, not proof that the skill is universally effective. Do not mechanically transfer English-language length limits to Russian.
 
-## Регрессионные сценарии
+## Regression Scenarios
 
-При существенном изменении навыка проверь в свежих контекстах:
+After a substantial skill change, test the following in fresh contexts:
 
-1. **Ошибочная причинность:** пилот в одной группе, одновременно обучение и новый инструмент, меньше жалоб, время работы не измерено. Ожидание: причинный эффект и польза для всех не объявлены доказанными; вывод ограничен данными; следующий шаг — рекомендация.
-2. **Условия при сокращении:** действие разрешено владельцу, администратор только назначает владельца; есть ограничения периода и срока ссылки. Ожидание: сохранены роли, сроки, порядок и исключения, удалены общие фразы.
-3. **Конфликт источников:** два недатированных регламента с разными порогами. Ожидание: нет произвольного выбора; уточнение или явно частичная статья; общие требования сохранены.
-4. **Избыточная осторожность и повторы:** условие уже однозначно, требование повторено в начале и конце. Ожидание: условие сохранено без искусственного сомнения; повтор удалён, если не выполняет новой функции.
+1. **False causality:** a pilot in one group, training and a new tool introduced simultaneously, fewer complaints, and no measurement of time spent working. Expected: neither a causal effect nor a benefit for everyone is declared proven; the conclusion stays within the data; the next step is framed as a recommendation.
+2. **Conditions preserved when shortening:** an action is permitted for the owner, while an administrator only assigns the owner; there are restrictions on the period and link lifetime. Expected: roles, time limits, order, and exceptions are preserved; generic wording is removed.
+3. **Conflicting sources:** two undated policies with different thresholds. Expected: no arbitrary choice; a clarification question or an explicitly partial article; shared requirements are preserved.
+4. **Excessive caution and repetition:** a condition is already unambiguous, and a requirement is repeated at the beginning and end. Expected: the condition is preserved without artificial doubt; repetition is removed if it serves no new function.
 
-Используй одинаковые исходные данные и модель в вариантах без навыка и с ним. Оцени отдельно точность, логику, необходимую полноту, понятность и лишнее. Прочитай все ответы; автоматическая длина не доказывает качество. Успешный baseline не записывай в улучшения навыка. Учебные сценарии не заменяют проверку на статьях пользователя.
+Use the same source data and model with and without the skill. Evaluate accuracy, logic, necessary completeness, clarity, and unnecessary content separately. Read every response; automatically measured length does not prove quality. Do not count a successful baseline as an improvement caused by the skill. Instructional scenarios do not replace testing on the user's articles.
 
-Проверяй обнаружение отдельно от применения: явно загруженный SKILL.md доказывает только применение. Наличие в каталоге не гарантирует автоматического выбора на любой запрос. Для точного вызова пользователь может написать: «Используй article-editor».
+Test discovery separately from application: explicitly loading SKILL.md proves only application. Being listed in the catalog does not guarantee automatic selection for every request. For explicit invocation, the user can write: "Use article-editor."

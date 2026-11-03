@@ -1,39 +1,39 @@
-# Примеры редакторских решений
+# Examples of Editing Decisions
 
-Это учебные примеры, а не факты о реальных продуктах. Заимствуй приём, не формулировки и не фиксированную длину.
+These are instructional examples, not facts about real products. Reuse the technique, not the wording or a fixed length.
 
-## Наблюдение не равно доказанной причине
+## Observation Is Not Proven Causation
 
-**Было:** «После запуска подсказок ошибок стало меньше. Значит, подсказки доказали эффективность и нужны всем подразделениям».
+**Before:** "After we launched the hints, errors decreased. This proves the hints are effective and every department needs them."
 
-**Исходные сведения:** подсказки проверяла одна группа; одновременно обновили инструкцию; сравнения с другими группами нет.
+**Source information:** one group tested the hints; the instructions were updated at the same time; there was no comparison with other groups.
 
-**Стало:** «После запуска подсказок в пилотной группе ошибок стало меньше. Однако одновременно обновили инструкцию, поэтому вклад подсказок пока неизвестен. До внедрения во всех подразделениях стоит сравнить группы с одинаковой инструкцией и разным доступом к подсказкам».
+**After:** "After hints were introduced in the pilot group, errors decreased. However, the instructions were updated at the same time, so the hints' contribution is still unknown. Before rolling them out to every department, compare groups using the same instructions but with different access to hints."
 
-**Что исправлено:** разделены наблюдение и причинное объяснение; ограничено обобщение; рекомендация не выдана за установленный результат.
+**What changed:** the observation is separated from the causal explanation; the generalization is limited; the recommendation is not presented as an established result.
 
-## Краткость без потери исключения
+## Brevity Without Losing an Exception
 
-**Было:** «Важно отметить, что пользователи, являющиеся владельцами документа, обладают возможностью создания копии. Наличие административной роли само по себе такую возможность не предоставляет».
+**Before:** "It is important to note that users who are document owners have the ability to create a copy. Having an administrator role does not, by itself, provide this ability."
 
-**Стало:** «Создать копию может только владелец документа. Роль администратора сама по себе этого права не даёт».
+**After:** "Only the document owner can create a copy. The administrator role alone does not grant this permission."
 
-**Что исправлено:** убрана громоздкость, но сохранено существенное различие ролей. Вариант «Владельцы и администраторы могут создать копию» короче по форме, но неверен по смыслу.
+**What changed:** wordiness is removed, but the essential distinction between roles remains. "Owners and administrators can create a copy" is shorter but changes the meaning incorrectly.
 
-## Повтор без новой функции
+## Repetition That Adds No New Function
 
-**Было:** «Срочную заявку тоже согласуют до оплаты. […] Даже срочная заявка требует согласования до оплаты».
+**Before:** "Urgent requests also require approval before payment. […] Even an urgent request must be approved before payment."
 
-**Стало:** оставь требование один раз рядом с порядком согласования. Заключение нужно только если добавляет отдельный полезный следующий шаг.
+**After:** keep the requirement once, next to the approval procedure. A conclusion is needed only if it adds a distinct, useful next step.
 
-**Что исправлено:** удалён дубль, а не важное требование. Проверяй и перефразированные дубли: «оснований для масштабирования недостаточно» в начале и «пилот ещё не доказывает пользу для всех» отдельным заключением. В короткой статье после оснований и конкретного следующего шага второе резюме не требуется. Не заменяй повтор новым выдуманным советом ради обязательного заключения.
+**What changed:** the duplicate is removed, not the important requirement. Check paraphrased duplicates too: "there is insufficient evidence to scale up" at the start and "the pilot does not yet prove a benefit for everyone" as a separate conclusion. In a short article, supporting reasons and a concrete next step do not need a second summary. Do not replace repetition with invented advice just to satisfy a supposed requirement for a conclusion.
 
-## Источники расходятся
+## Conflicting Sources
 
-**Материал:** в одной недатированной инструкции срок хранения — семь дней, в другой — тридцать.
+**Material:** one undated instruction gives a retention period of seven days; another gives thirty.
 
-**Плохая редактура:** выбрать тридцать как «вероятно новую версию».
+**Poor editing:** choose thirty as "probably the newer version."
 
-**Корректный ответ:** «В материалах указаны разные сроки хранения: семь и тридцать дней. Какая инструкция действует сейчас? Без этого нельзя подготовить однозначное правило для сотрудников».
+**Correct response:** "The materials give different retention periods: seven and thirty days. Which instruction is currently in effect? Without that, I cannot prepare an unambiguous rule for employees."
 
-**Что исправлено:** реальная неопределённость не скрыта. Если остальная статья полезна отдельно, можно дать её как явно неполный текст без спорного правила.
+**What changed:** genuine uncertainty is not hidden. If the rest of the article is useful on its own, it can be delivered as explicitly incomplete text without the disputed rule.
